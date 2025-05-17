@@ -1,0 +1,26 @@
+{
+  "name": "websocket",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "tsx ./src/server.ts",
+    "dev": "tsx watch ./src/server.ts",
+    "build": "tsc -b"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "tsx": "^4.19.4",
+    "@repo/types":"workspace:*",
+    "@repo/typescript-config": "workspace:*"
+  },
+  "dependencies": {
+    "@types/express": "^5.0.1",
+    "@types/ws": "^8.18.1",
+    "express": "^5.1.0",
+    "mediasoup": "3",
+    "ws": "^8.18.2"
+  }
+}

@@ -48,3 +48,9 @@ a {
     display: unset;
   }
 }
+video {
+  width: 100%;
+  max-width: 600px;
+  border: 1px solid #ddd;
+  margin: 10px 0;
+}
