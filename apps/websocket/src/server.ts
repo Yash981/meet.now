@@ -77,6 +77,8 @@ wss.on(
         await handleProduce(parsedData, ws, peerId);
       } else if (parsedData.type === EventTypes.CONSUME) {
         await handleConsume(parsedData, ws, router, peerId);
+      } else if (parsedData.type === EventTypes.RESUME_CONSUMER) {
+        await handleResumeConsumer(parsedData, ws, peerId);
       }
     });
     ws.on("error", console.error);
@@ -237,7 +239,7 @@ const handleConsume = async (
     const consumer = await consumerTransport?.consume({
       producerId,
       rtpCapabilities,
-      paused: false,
+      paused: true,
     });
     peer.consumers.set(consumer.id, consumer);
     consumer?.on("transportclose", () => {
@@ -302,5 +304,25 @@ const notifyNewPeerOfExistingProducers = (
         );
       });
     }
+  }
+};
+
+const handleResumeConsumer = async (
+  data: any,
+  socket: WebSocket,
+  peerId: string
+) => {
+  const peer = peers.get(peerId);
+  const consumer = peer?.consumers.get(data.consumerId);
+  if (consumer) {
+    await consumer.resume();
+    socket.send(
+      JSON.stringify({
+        type: EventTypes.RESUME_PAUSED_CONSUMER,
+        consumerId: consumer.id,
+      })
+    );
+  } else {
+    console.error("Consumer not found for resume");
   }
 };

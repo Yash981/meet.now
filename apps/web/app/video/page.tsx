@@ -68,7 +68,7 @@ export default function VideoCall() {
         handleNewProducer(data);
         break;
       case EventTypes.ERROR:
-        console.error("Server error:", data.msg);
+        console.log("Server error:", data.msg);
         setStatus(`Error: ${data.msg}`);
         break;
     }
@@ -126,7 +126,7 @@ export default function VideoCall() {
 
       const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
-        audio: false
+        audio: true
       });
       mediaSoupClientState.current.localStream = stream;
       const localVideoEl = document.getElementById("local-video") as HTMLVideoElement;
@@ -216,7 +216,16 @@ export default function VideoCall() {
       if (!producer) return;
       mediaSoupClientState.current.producers.set(producer.id, producer);
       setStatus("Sending video...");
+      const audioTrack = mediaSoupClientState.current.localStream?.getAudioTracks()[0];
+      if (audioTrack) {
+        const audioProducer = await transport.produce({ track: audioTrack });
+        mediaSoupClientState.current.producers.set(audioProducer.id, audioProducer);
 
+        audioProducer.on("trackended", () => console.log("Audio track ended"));
+        audioProducer.on("transportclose", () => console.log("Audio producer transport closed"));
+      } else {
+        console.warn("No audio track found in local stream");
+      }
       producer.on("trackended", () => {
         console.log("Track ended");
       });
@@ -288,10 +297,8 @@ export default function VideoCall() {
       setStatus("Error setting up consumer");
     }
   };
-
   const handleConsumed = async (data: any) => {
     try {
-
       const consumer = await mediaSoupClientState.current.recvTransport?.consume({
         id: data.consumerId,
         producerId: data.producerId,
@@ -302,68 +309,100 @@ export default function VideoCall() {
       mediaSoupClientState.current.consumers.set(consumer.id, consumer);
       console.log("Consumer created:", consumer.id);
       const stream = new MediaStream([consumer.track]);
-      const remoteVideoEl = document.getElementById("remote-video") as HTMLVideoElement;
-      if (!remoteVideoEl) {
-        console.error("Remote video element not found");
-        return;
+      if (data.kind === "video") {
+        const remoteVideoEl = document.getElementById("remote-video") as HTMLVideoElement;
+        if (!remoteVideoEl) {
+          console.error("Remote video element not found");
+          return;
+        }
+        remoteVideoRef.current = remoteVideoEl;
+        remoteVideoRef.current.srcObject = stream;
+        console.log("Consumer created, paused:", consumer.paused);
+        console.log("Consumer track:", consumer.track);
+        console.log("Track readyState:", consumer.track.readyState);
+        // await remoteVideoRef.current.play();
       }
-      remoteVideoRef.current = remoteVideoEl;
-      remoteVideoRef.current.srcObject = stream;
-      remoteVideoRef.current.play();
-      
+
+      if (data.kind === "audio") {
+        const remoteAudioEl = document.getElementById("remote-audio") as HTMLAudioElement;
+        if (!remoteAudioEl) {
+          console.error("Remote audio element not found");
+          return;
+        }
+        remoteAudioEl.srcObject = stream;
+        // await remoteAudioEl.play();
+      }
+
+      wsRef.current?.send(
+        JSON.stringify({
+          type: EventTypes.RESUME_CONSUMER,
+          consumerId: consumer.id
+        })
+      );
+      console.log(`Consumer resumed for ${data.kind}, paused:`, consumer.paused);
+
       consumer.on("trackended", () => {
-        console.log("Track ended");
-        if (remoteVideoRef.current) {
+        console.log(`${data.kind} track ended`);
+        if (data.kind === "video" && remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = null;
         }
+        if (data.kind === "audio") {
+          const remoteAudioEl = document.getElementById("remote-audio") as HTMLAudioElement;
+          if (remoteAudioEl) remoteAudioEl.srcObject = null;
+        }
       });
+
       consumer.on("transportclose", () => {
-        console.log("Consumer transport closed");
+        console.log(`${data.kind} consumer transport closed`);
       });
 
-      
-      setStatus("Call active - Receiving video");
-
+      setStatus(`Call active - Receiving ${data.kind}`);
     } catch (error) {
-      console.error("Error handling consumed media:", error);
-      setStatus("Error receiving video");
+      console.error(`Error handling consumed ${data.kind}:`, error);
+      setStatus(`Error receiving ${data.kind}`);
     }
   };
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <div className="bg-white rounded-lg shadow-lg p-4">
-        <h3 className="text-lg font-semibold mb-4 text-center">Status</h3>
-        <p className="text-center">{status}</p>
-        <button
-          onClick={startCall}
-          className="mt-4 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
-        >
-          Start Call
-        </button>
-      </div>
-      {/* Local Video */}
-      <div className="bg-white rounded-lg shadow-lg p-4">
-        <h3 className="text-lg font-semibold mb-4 text-center">Local Video</h3>
-        <video
-          id="local-video"
-          autoPlay
-          playsInline
-          muted
-          className="w-full h-64 bg-gray-200 rounded-lg object-cover"
-        />
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-indigo-100 to-white px-4 py-8">
+      <h1 className="text-3xl font-bold text-indigo-700 mb-4">MediaSoup Video Call</h1>
+
+      <div className="mb-2 text-sm text-gray-600">Status:
+        <span className="ml-2 font-semibold text-indigo-600">{status}</span>
       </div>
 
-      {/* Remote Video */}
-      <div className="bg-white rounded-lg shadow-lg p-4">
-        <h3 className="text-lg font-semibold mb-4 text-center">Remote Video</h3>
-        <video
-          id="remote-video"
-          autoPlay
-          playsInline
-          className="w-full h-64 bg-gray-200 rounded-lg object-cover"
-        />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6 w-full max-w-4xl">
+        <div className="flex flex-col items-center">
+          <h2 className="text-lg font-semibold mb-2 text-gray-700">Your Video</h2>
+          <video
+            id="local-video"
+            className="w-full h-64 rounded-xl border-2 border-indigo-300 shadow-md object-cover"
+            autoPlay
+            muted
+            playsInline
+          />
+        </div>
+
+        <div className="flex flex-col items-center">
+          <h2 className="text-lg font-semibold mb-2 text-gray-700">Remote Video</h2>
+          <video
+            id="remote-video"
+            ref={remoteVideoRef}
+            className="w-full h-64 rounded-xl border-2 border-pink-300 shadow-md object-cover"
+            autoPlay
+            playsInline
+          />
+        </div>
       </div>
+
+      <audio id="remote-audio" autoPlay className="hidden" />
+
+      <button
+        onClick={startCall}
+        className="mt-8 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-xl shadow-lg transition-all"
+      >
+        Start Call
+      </button>
     </div>
-
   );
 }
