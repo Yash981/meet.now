@@ -12,9 +12,10 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
-    "tsx": "^4.19.4",
-    "@repo/types":"workspace:*",
-    "@repo/typescript-config": "workspace:*"
+    "@repo/types": "workspace:*",
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "^22.15.3",
+    "tsx": "^4.19.4"
   },
   "dependencies": {
     "@types/express": "^5.0.1",

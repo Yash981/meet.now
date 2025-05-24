@@ -11,7 +11,7 @@ const workerSettings = {
     "rtcp",
     "rtp",
     "info",
-    "srtp"
+    "sctp"
   ]
 } as WorkerSettings;
 export function generatePeerId() {
@@ -40,15 +40,22 @@ const createWorkerFn = async () => {
   newWorker.on("died", () => {
     console.error("MediaSoup worker has died");
     setTimeout(() => {
-        process.exit();
+        process.exit(1);
       }, 2000);
   });
   return newWorker
 };
-const startWorker = async () => {
+export const startWorker = async () => {
   worker = await createWorkerFn();
 }
-const startRouter = async () => {
-  router = await worker.createRouter({ mediaCodecs });
+export const startRouter = async () => {
+  if (!worker) throw new Error("Worker not initialized");
+  if(!router) {
+    console.log("Creating router");
+    router = await worker.createRouter({ mediaCodecs });
+  } else {
+    console.log("Router already exists");
+  }
 }
-export { startWorker, startRouter,worker, router };
+export const getWorker = () => worker;
+export const getRouter = () => router;
