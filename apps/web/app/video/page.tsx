@@ -1,16 +1,29 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import { Device } from "mediasoup-client";
 import { EventTypes } from "@repo/types";
 import { Consumer, Producer, RtpCapabilities, Transport } from "mediasoup-client/types";
+import { Users, Video, VideoOff, Mic, MicOff, Phone, PhoneOff, Settings, Maximize2, Volume2 } from "lucide-react";
+import Link from "next/link";
+
+type RemoteUser = {
+  id: string;
+  name?: string;
+  videoConsumer?: Consumer;
+  audioConsumer?: Consumer;
+  videoEnabled: boolean;
+  audioEnabled: boolean;
+  stream?: MediaStream;
+};
+
 type PeerClientState = {
   device: Device | null;
   sendTransport: Transport | null;
   recvTransport: Transport | null;
-  producers: Map<string, Producer>;   // Your own outgoing media streams
-  consumers: Map<string, Consumer>;   // Incoming media from others
+  producers: Map<string, Producer>;
+  consumers: Map<string, Consumer>;
   rtpCapabilities: RtpCapabilities | null;
-  localStream: MediaStream | null;    // Local media stream
+  localStream: MediaStream | null;
 };
 
 export default function VideoCall() {
@@ -25,27 +38,33 @@ export default function VideoCall() {
   });
 
   const wsRef = useRef<WebSocket>(null);
-
   const [status, setStatus] = useState("Disconnected");
-  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const [remoteUsers, setRemoteUsers] = useState<Map<string, RemoteUser>>(new Map());
+  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
+  const [isInCall, setIsInCall] = useState(false);
+  const [participantCount, setParticipantCount] = useState(0);
 
   useEffect(() => {
     connectWebSocket();
-
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
+        remoteUsers.forEach((user) => {
+          user.stream?.getTracks().forEach((track) => track.stop());
+        });
+        setRemoteUsers(new Map());
       }
     };
-  }, [])
-  // Handle WebSocket messages
+  }, []);
+
   const handleWebSocketMessage = async (event: any) => {
     const data = JSON.parse(event.data);
     console.log("Received message:", data);
 
     switch (data.type) {
       case EventTypes.WELCOME:
-        setStatus("Connected - Ready to start call");
+        setStatus("Connected");
         await initializeDevice();
         break;
 
@@ -60,13 +79,15 @@ export default function VideoCall() {
           await setupConsumerTransport(data);
         }
         break;
+
       case EventTypes.CONSUMED:
         await handleConsumed(data);
         break;
+
       case EventTypes.NEW_PRODUCER:
-        console.log("New producer:", data);
         handleNewProducer(data);
         break;
+
       case EventTypes.ERROR:
         console.log("Server error:", data.msg);
         setStatus(`Error: ${data.msg}`);
@@ -74,14 +95,13 @@ export default function VideoCall() {
     }
   };
 
-  // Connect to WebSocket server
   const connectWebSocket = () => {
     const ws = new WebSocket("ws://localhost:8080");
     wsRef.current = ws;
 
     ws.onopen = () => {
       console.log("WebSocket connected");
-      setStatus("Connecting...");
+      setStatus("Connected");
     };
 
     ws.onmessage = handleWebSocketMessage;
@@ -108,12 +128,10 @@ export default function VideoCall() {
     try {
       console.log("Creating device...");
       mediaSoupClientState.current.device = new Device();
-
       await mediaSoupClientState.current.device.load({ routerRtpCapabilities: rtpCapabilities });
       mediaSoupClientState.current.rtpCapabilities = rtpCapabilities;
-      setStatus("Device created - Ready to start call");
+      setStatus("Ready");
       console.log("Device created:", mediaSoupClientState.current.device);
-
     } catch (error) {
       console.error("Error creating device:", error);
       setStatus("Error creating device");
@@ -122,18 +140,21 @@ export default function VideoCall() {
 
   const startCall = async () => {
     try {
-      setStatus("Starting camera...");
+      setStatus("Starting call...");
+      setIsInCall(true);
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true
+        video: isVideoEnabled,
+        audio: isAudioEnabled
       });
+
       mediaSoupClientState.current.localStream = stream;
       const localVideoEl = document.getElementById("local-video") as HTMLVideoElement;
       if (localVideoEl) {
         localVideoEl.srcObject = stream;
         localVideoEl.play();
       }
+
       if (!wsRef || !wsRef.current) return;
       wsRef.current.send(JSON.stringify({
         type: EventTypes.CREATE_WEBRTC_TRANSPORT,
@@ -142,10 +163,48 @@ export default function VideoCall() {
       wsRef.current.send(JSON.stringify({
         type: EventTypes.CREATE_WEBRTC_TRANSPORT,
         direction: "recv"
-      }))
+      }));
     } catch (error) {
       console.error("Error starting call:", error);
       setStatus("Error accessing camera");
+      setIsInCall(false);
+    }
+  };
+
+  const endCall = () => {
+    setIsInCall(false);
+    setStatus("Call ended");
+    setRemoteUsers(new Map());
+    setParticipantCount(0);
+
+    // Stop local stream
+    if (mediaSoupClientState.current.localStream) {
+      mediaSoupClientState.current.localStream.getTracks().forEach(track => track.stop());
+      mediaSoupClientState.current.localStream = null;
+    }
+
+    // Clear video elements
+    const localVideoEl = document.getElementById("local-video") as HTMLVideoElement;
+    if (localVideoEl) localVideoEl.srcObject = null;
+  };
+
+  const toggleVideo = async () => {
+    if (mediaSoupClientState.current.localStream) {
+      const videoTrack = mediaSoupClientState.current.localStream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = !isVideoEnabled;
+        setIsVideoEnabled(!isVideoEnabled);
+      }
+    }
+  };
+
+  const toggleAudio = async () => {
+    if (mediaSoupClientState.current.localStream) {
+      const audioTrack = mediaSoupClientState.current.localStream.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !isAudioEnabled;
+        setIsAudioEnabled(!isAudioEnabled);
+      }
     }
   };
 
@@ -155,16 +214,18 @@ export default function VideoCall() {
         console.error("Device not initialized");
         return;
       }
+
       const transport = mediaSoupClientState.current.device.createSendTransport({
         id: transportData.transportId,
         iceParameters: transportData.iceParameters,
         iceCandidates: transportData.iceCandidates,
         dtlsParameters: transportData.dtlsParameters
-      })
+      });
+
       if (!transport) return;
 
-
       mediaSoupClientState.current.sendTransport = transport;
+
       transport?.on("connect", async ({ dtlsParameters }, callback, errback) => {
         try {
           wsRef?.current?.send(JSON.stringify({
@@ -178,6 +239,7 @@ export default function VideoCall() {
           errback(error);
         }
       });
+
       transport.on("produce", async ({ kind, rtpParameters }, callback, errback) => {
         try {
           const handleProduced = (event: MessageEvent) => {
@@ -199,41 +261,36 @@ export default function VideoCall() {
         }
       });
 
-      const videoTrack = mediaSoupClientState.current.localStream?.getVideoTracks()[0];
-      if (!videoTrack) {
-        console.warn("No video track found in local stream");
-        return;
+      if (isVideoEnabled) {
+        const videoTrack = mediaSoupClientState.current.localStream?.getVideoTracks()[0];
+        if (videoTrack) {
+          const producer = await transport.produce({
+            track: videoTrack,
+            encodings: [
+              { rid: "r0", maxBitrate: 100000, scalabilityMode: "S1T3" },
+              { rid: "r1", maxBitrate: 300000, scalabilityMode: "S1T3" },
+              { rid: "r2", maxBitrate: 900000, scalabilityMode: "S1T3" }
+            ],
+            codecOptions: { videoGoogleStartBitrate: 1000 }
+          });
+          if (producer) {
+            mediaSoupClientState.current.producers.set(producer.id, producer);
+          }
+        }
       }
-      const producer = await transport.produce({
-        track: videoTrack,
-        encodings: [
-          { rid: "r0", maxBitrate: 100000, scalabilityMode: "S1T3" },
-          { rid: "r1", maxBitrate: 300000, scalabilityMode: "S1T3" },
-          { rid: "r2", maxBitrate: 900000, scalabilityMode: "S1T3" }
-        ],
-        codecOptions: { videoGoogleStartBitrate: 1000 }
-      });
-      if (!producer) return;
-      mediaSoupClientState.current.producers.set(producer.id, producer);
-      setStatus("Sending video...");
-      const audioTrack = mediaSoupClientState.current.localStream?.getAudioTracks()[0];
-      if (audioTrack) {
-        const audioProducer = await transport.produce({ track: audioTrack });
-        mediaSoupClientState.current.producers.set(audioProducer.id, audioProducer);
 
-        audioProducer.on("trackended", () => console.log("Audio track ended"));
-        audioProducer.on("transportclose", () => console.log("Audio producer transport closed"));
-      } else {
-        console.warn("No audio track found in local stream");
+      // Produce audio if enabled
+      if (isAudioEnabled) {
+        const audioTrack = mediaSoupClientState.current.localStream?.getAudioTracks()[0];
+        if (audioTrack) {
+          const audioProducer = await transport.produce({ track: audioTrack });
+          if (audioProducer) {
+            mediaSoupClientState.current.producers.set(audioProducer.id, audioProducer);
+          }
+        }
       }
-      producer.on("trackended", () => {
-        console.log("Track ended");
-      });
 
-      producer.on("transportclose", () => {
-        console.log("Producer transport closed");
-      });
-
+      setStatus("In call");
     } catch (error) {
       console.error("Error setting up producer transport:", error);
       setStatus("Error setting up producer");
@@ -246,25 +303,28 @@ export default function VideoCall() {
       wsRef.current?.send(JSON.stringify({
         type: EventTypes.CONSUME,
         producerId,
+        peerId,
+        kind,
         rtpCapabilities: mediaSoupClientState.current?.device?.rtpCapabilities,
       }));
     } catch (error) {
       console.error("Error handling new producer:", error);
-      setStatus("Error handling new producer");
     }
-  }
+  };
 
   const setupConsumerTransport = async (transportData: any) => {
     try {
       if (!mediaSoupClientState.current.device) {
         throw new Error("Device not initialized");
       }
+
       const transport = mediaSoupClientState.current.device.createRecvTransport({
         id: transportData.transportId,
         iceParameters: transportData.iceParameters,
         iceCandidates: transportData.iceCandidates,
         dtlsParameters: transportData.dtlsParameters
       });
+
       if (!transport) return console.error("No transport found");
       mediaSoupClientState.current.recvTransport = transport;
 
@@ -282,21 +342,15 @@ export default function VideoCall() {
           errback(error);
         }
       });
+
       transport.on("connectionstatechange", (state) => {
         console.log("Consumer transport connection state:", state);
-        if (state === "connected") {
-          setStatus("Consumer transport connected");
-        } else if (state === "failed") {
-          setStatus("Consumer transport failed");
-        }
       });
-      setStatus("Consumer transport created - Starting to receive...");
-
     } catch (error) {
       console.error("Error setting up consumer transport:", error);
-      setStatus("Error setting up consumer");
     }
   };
+
   const handleConsumed = async (data: any) => {
     try {
       const consumer = await mediaSoupClientState.current.recvTransport?.consume({
@@ -305,104 +359,369 @@ export default function VideoCall() {
         kind: data.kind,
         rtpParameters: data.rtpParameters
       });
-      if (!consumer) return;
-      mediaSoupClientState.current.consumers.set(consumer.id, consumer);
-      console.log("Consumer created:", consumer.id);
-      const stream = new MediaStream([consumer.track]);
-      if (data.kind === "video") {
-        const remoteVideoEl = document.getElementById("remote-video") as HTMLVideoElement;
-        if (!remoteVideoEl) {
-          console.error("Remote video element not found");
-          return;
-        }
-        remoteVideoRef.current = remoteVideoEl;
-        remoteVideoRef.current.srcObject = stream;
-        console.log("Consumer created, paused:", consumer.paused);
-        console.log("Consumer track:", consumer.track);
-        console.log("Track readyState:", consumer.track.readyState);
-        // await remoteVideoRef.current.play();
-      }
 
-      if (data.kind === "audio") {
-        const remoteAudioEl = document.getElementById("remote-audio") as HTMLAudioElement;
-        if (!remoteAudioEl) {
-          console.error("Remote audio element not found");
-          return;
+      if (!consumer) return;
+
+      mediaSoupClientState.current.consumers.set(consumer.id, consumer);
+      const userId = data.producerPeerId;
+
+      setRemoteUsers(prev => {
+        const newUsers = new Map(prev);
+        const existingUser = newUsers.get(userId)
+        if (!existingUser?.stream) {
+          const newStream = new MediaStream([consumer.track]);
+          newUsers.set(userId, {
+            id: userId,
+            stream: newStream,
+            name: existingUser?.name || "",
+            videoEnabled: data.kind === "video",
+            audioEnabled: data.kind === "audio",
+            videoConsumer: data.kind === "video" ? consumer : undefined,
+            audioConsumer: data.kind === "audio" ? consumer : undefined,
+          });
+        } else {
+          existingUser.stream?.addTrack(consumer.track);
+          if (data.kind === "video") {
+            existingUser.videoConsumer = consumer;
+            existingUser.videoEnabled = true;
+          } else if (data.kind === "audio") {
+            existingUser.audioConsumer = consumer;
+            existingUser.audioEnabled = true;
+          }
+          newUsers.set(userId, { ...existingUser });
         }
-        remoteAudioEl.srcObject = stream;
-        // await remoteAudioEl.play();
-      }
+        return newUsers;
+      });
 
       wsRef.current?.send(
         JSON.stringify({
           type: EventTypes.RESUME_CONSUMER,
-          consumerId: consumer.id
+          consumerId: consumer.id,
+          peerId: data.producerPeerId
         })
       );
-      console.log(`Consumer resumed for ${data.kind}, paused:`, consumer.paused);
-
       consumer.on("trackended", () => {
-        console.log(`${data.kind} track ended`);
-        if (data.kind === "video" && remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = null;
-        }
-        if (data.kind === "audio") {
-          const remoteAudioEl = document.getElementById("remote-audio") as HTMLAudioElement;
-          if (remoteAudioEl) remoteAudioEl.srcObject = null;
-        }
+        setRemoteUsers(prev => {
+          const newUsers = new Map(prev);
+          const user = newUsers.get(userId);
+          if (user) {
+            if (data.kind === "video") {
+              user.videoEnabled = false;
+              user.videoConsumer = undefined;
+            } else if (data.kind === "audio") {
+              user.audioEnabled = false;
+              user.audioConsumer = undefined;
+            }
+            newUsers.set(userId, user);
+          }
+          return newUsers;
+        });
       });
-
-      consumer.on("transportclose", () => {
-        console.log(`${data.kind} consumer transport closed`);
-      });
-
-      setStatus(`Call active - Receiving ${data.kind}`);
     } catch (error) {
       console.error(`Error handling consumed ${data.kind}:`, error);
-      setStatus(`Error receiving ${data.kind}`);
     }
   };
+  useEffect(() => {
+    setParticipantCount(remoteUsers.size);
+  }, [remoteUsers]);
+  console.log(remoteUsers, remoteUsers.size, "remote users state");
 
+  const getGridClass = () => {
+    const userCount = remoteUsers.size;
+    if (userCount === 0) return "grid-cols-1";
+    if (userCount === 1) return "grid-cols-1 md:grid-cols-2";
+    if (userCount <= 4) return "grid-cols-2";
+    if (userCount <= 6) return "grid-cols-2 md:grid-cols-3";
+    return "grid-cols-2 md:grid-cols-3 lg:grid-cols-4";
+  };
+
+  const RemoteUserCard = ({ user }: { user: RemoteUser }) => {
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const audioRef = useRef<HTMLAudioElement>(null);
+
+    useEffect(() => {
+      const setupMedia = async () => {
+        if (user.stream && videoRef.current) {
+          videoRef.current.srcObject = user.stream
+          // try {
+          //   await videoRef.current.play();
+          // } catch (err) {
+          //   console.warn("Video play() failed", err);
+          // }
+        }
+        if (user.audioConsumer && audioRef.current) {
+          const audioStream = new MediaStream([user.audioConsumer.track]);
+          audioRef.current.srcObject = audioStream;
+          // try {
+          //   await audioRef.current.play();
+          // } catch (err) {
+          //   console.warn("audio play() failed", err);
+          // }
+        }
+      };
+
+      setupMedia();
+    }, [user.stream, user.audioConsumer]);
+    console.log(user.stream, user.videoEnabled, "remote user ", user.id)
+    return (
+      <div className="relative group">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 aspect-video shadow-2xl border border-slate-700/50">
+          {user.videoEnabled && user.stream ? (
+            <video
+              ref={videoRef}
+              className="w-full h-full object-cover"
+              autoPlay
+              playsInline
+              id={`remote-video-${user.id}`}
+
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-700 to-slate-800">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                <span className="text-white text-xl font-bold">
+                  {user.id?.charAt(0) || "U"}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* User controls overlay */}
+          <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <span className="text-white text-sm font-medium bg-black/40 backdrop-blur-sm px-2 py-1 rounded-lg">
+                {user.name || `User ${user.id}`}
+              </span>
+            </div>
+            <div className="flex items-center space-x-1">
+              {!user.audioEnabled && (
+                <div className="w-6 h-6 rounded-full bg-red-500/80 flex items-center justify-center">
+                  <MicOff size={12} className="text-white" />
+                </div>
+              )}
+              {!user.videoEnabled && (
+                <div className="w-6 h-6 rounded-full bg-red-500/80 flex items-center justify-center">
+                  <VideoOff size={12} className="text-white" />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Connection indicator */}
+          <div className="absolute top-3 right-3">
+            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+          </div>
+        </div>
+
+        <audio ref={audioRef} autoPlay className="hidden" />
+      </div>
+    );
+  };
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-indigo-100 to-white px-4 py-8">
-      <h1 className="text-3xl font-bold text-indigo-700 mb-4">MediaSoup Video Call</h1>
-
-      <div className="mb-2 text-sm text-gray-600">Status:
-        <span className="ml-2 font-semibold text-indigo-600">{status}</span>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white relative overflow-hidden">
+      {/* Animated background */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500/20 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl animate-pulse"></div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6 w-full max-w-4xl">
-        <div className="flex flex-col items-center">
-          <h2 className="text-lg font-semibold mb-2 text-gray-700">Your Video</h2>
-          <video
-            id="local-video"
-            className="w-full h-64 rounded-xl border-2 border-indigo-300 shadow-md object-cover"
-            autoPlay
-            muted
-            playsInline
-          />
+      <div className="relative z-10 p-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center space-x-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
+              <Video className="text-white" size={24} />
+            </div>
+            <div>
+              <Link href="/" className="text-2xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+                MediaSoup Conference
+              </Link>
+              <div className="flex items-center space-x-4 text-sm text-gray-400">
+                <span className="flex items-center space-x-1">
+                  <div className={`w-2 h-2 rounded-full ${status === 'Connected' || status === 'Ready' || status === 'In call' ? 'bg-green-400' : 'bg-red-400'}`}></div>
+                  <span>{status}</span>
+                </span>
+                {isInCall && (
+                  <span className="flex items-center space-x-1">
+                    <Users size={14} />
+                    <span>{participantCount + 1} participants</span>
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {isInCall && (
+            <div className="flex items-center space-x-2">
+              <button className="p-2 rounded-xl bg-slate-700/50 hover:bg-slate-600/50 transition-all">
+                <Settings size={20} />
+              </button>
+              <button className="p-2 rounded-xl bg-slate-700/50 hover:bg-slate-600/50 transition-all">
+                <Maximize2 size={20} />
+              </button>
+            </div>
+          )}
         </div>
 
-        <div className="flex flex-col items-center">
-          <h2 className="text-lg font-semibold mb-2 text-gray-700">Remote Video</h2>
-          <video
-            id="remote-video"
-            ref={remoteVideoRef}
-            className="w-full h-64 rounded-xl border-2 border-pink-300 shadow-md object-cover"
-            autoPlay
-            playsInline
-          />
-        </div>
+        {!isInCall ? (
+          // Pre-call screen
+          <div className="flex flex-col items-center justify-center min-h-[60vh]">
+            <div className="text-center mb-8">
+              <h2 className="text-4xl font-bold mb-4 bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+                Ready to Connect?
+              </h2>
+              <p className="text-gray-400 text-lg">
+                Join the conversation with crystal clear video and audio
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl mb-8">
+              {/* Local preview */}
+              <div className="relative">
+                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 aspect-video shadow-2xl border border-slate-700/50">
+                  <video
+                    id="local-video"
+                    className="w-full h-full object-cover"
+                    autoPlay
+                    muted
+                    playsInline
+                  />
+                  <div className="absolute bottom-4 left-4">
+                    <span className="text-white text-sm font-medium bg-black/40 backdrop-blur-sm px-3 py-1 rounded-lg">
+                      You
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Feature highlights */}
+              <div className="flex flex-col justify-center space-y-6">
+                <div className="flex items-center space-x-4">
+                  <div className="w-12 h-12 rounded-xl bg-green-500/20 flex items-center justify-center">
+                    <Video className="text-green-400" size={24} />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg">HD Video Quality</h3>
+                    <p className="text-gray-400">Crystal clear video with adaptive bitrate</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center">
+                    <Users className="text-blue-400" size={24} />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg">Multiple Participants</h3>
+                    <p className="text-gray-400">Connect with multiple people simultaneously</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <div className="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center">
+                    <Volume2 className="text-purple-400" size={24} />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg">Clear Audio</h3>
+                    <p className="text-gray-400">Noise cancellation and echo reduction</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={startCall}
+              disabled={status !== 'Ready' && status !== 'Connected'}
+              className="group relative px-8 py-4 bg-gradient-to-r from-purple-600 to-blue-600 rounded-2xl font-semibold text-lg shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+            >
+              <div className="flex items-center space-x-3">
+                <Phone size={24} />
+                <span>Start Call</span>
+              </div>
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-600/50 to-blue-600/50 opacity-0 group-hover:opacity-100 transition-opacity blur-xl"></div>
+            </button>
+          </div>
+        ) : (
+          // In-call screen
+          <div className="space-y-6">
+            {/* Video grid */}
+            <div className={`grid ${getGridClass()} gap-4`}>
+              {/* Local video (smaller when others are present) */}
+              <div className={`relative ${remoteUsers.size > 0 ? 'order-last' : ''}`}>
+                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 aspect-video shadow-2xl border border-slate-700/50">
+                  <video
+                    id="local-video"
+                    className="w-full h-full object-cover"
+                    autoPlay
+                    muted
+
+                    playsInline
+
+                  />
+                  <div className="absolute bottom-3 left-3">
+                    <span className="text-white text-sm font-medium bg-black/40 backdrop-blur-sm px-2 py-1 rounded-lg">
+                      You
+                    </span>
+                  </div>
+                  <div className="absolute bottom-3 right-3 flex items-center space-x-1">
+                    {!isAudioEnabled && (
+                      <div className="w-6 h-6 rounded-full bg-red-500/80 flex items-center justify-center">
+                        <MicOff size={12} className="text-white" />
+                      </div>
+                    )}
+                    {!isVideoEnabled && (
+                      <div className="w-6 h-6 rounded-full bg-red-500/80 flex items-center justify-center">
+                        <VideoOff size={12} className="text-white" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Remote users */}
+              {Array.from(remoteUsers.values()).map((user) => {
+                // if (!user.stream) return null; // Skip users without a stream
+                // if (user.id === mediaSoupClientState.current.localStream?.id) return null; // Skip local user
+                // console.log(user, "remote user in map");
+                // const hasVideo = user.videoEnabled && user.stream?.getVideoTracks().length > 0;
+                // console.log(`User ${user.id} has video:`, hasVideo, user.stream?.getVideoTracks());
+                return (
+                  <RemoteUserCard key={user.id} user={user} />
+                  
+                )
+              })}
+            </div>
+
+            {/* Controls */}
+            <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2">
+              <div className="flex items-center space-x-4 bg-slate-800/80 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-slate-700/50">
+                <button
+                  onClick={toggleAudio}
+                  className={`p-3 rounded-xl transition-all ${isAudioEnabled
+                    ? 'bg-slate-700 hover:bg-slate-600 text-white'
+                    : 'bg-red-500 hover:bg-red-600 text-white'
+                    }`}
+                >
+                  {isAudioEnabled ? <Mic size={20} /> : <MicOff size={20} />}
+                </button>
+
+                <button
+                  onClick={toggleVideo}
+                  className={`p-3 rounded-xl transition-all ${isVideoEnabled
+                    ? 'bg-slate-700 hover:bg-slate-600 text-white'
+                    : 'bg-red-500 hover:bg-red-600 text-white'
+                    }`}
+                >
+                  {isVideoEnabled ? <Video size={20} /> : <VideoOff size={20} />}
+                </button>
+
+                <button
+                  onClick={endCall}
+                  className="p-3 rounded-xl bg-red-500 hover:bg-red-600 text-white transition-all"
+                >
+                  <PhoneOff size={20} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-
-      <audio id="remote-audio" autoPlay className="hidden" />
-
-      <button
-        onClick={startCall}
-        className="mt-8 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-xl shadow-lg transition-all"
-      >
-        Start Call
-      </button>
     </div>
   );
 }

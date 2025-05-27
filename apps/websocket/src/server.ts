@@ -13,7 +13,7 @@ import {
   Transport,
   WebRtcTransport,
 } from "mediasoup/types";
-import { get, IncomingMessage } from "http";
+import { IncomingMessage } from "http";
 const wss = new WebSocketServer({ port: 8080 });
 wss.on("listening", () => {
   console.log("WebSocket server is now running on 8080");
@@ -24,6 +24,7 @@ export type Peer = {
     sendTransport: Transport;
     recvTransport: Transport;
   };
+  userId: string;
   producers: Map<string, Producer>;
   consumers: Map<string, Consumer>;
 };
@@ -45,6 +46,7 @@ wss.on(
         sendTransport: {} as Transport,
         recvTransport: {} as Transport,
       },
+      userId: peerId,
       producers: new Map(),
       consumers: new Map(),
     });
@@ -56,7 +58,6 @@ wss.on(
     );
     const router = getRouter();
     ws.on("message", async (message) => {
-      console.log(message.toString(), "message");
       const parsedData = JSON.parse(message.toString());
       if (parsedData.type === EventTypes.GET_ROUTER_RTP_CAPABILITIES) {
         handleGetRouterRtpCapabilities(ws, router);
@@ -76,9 +77,9 @@ wss.on(
       } else if (parsedData.type === EventTypes.PRODUCE) {
         await handleProduce(parsedData, ws, peerId);
       } else if (parsedData.type === EventTypes.CONSUME) {
-        await handleConsume(parsedData, ws, router, peerId);
+        await handleConsume(parsedData, ws, router,peerId);
       } else if (parsedData.type === EventTypes.RESUME_CONSUMER) {
-        await handleResumeConsumer(parsedData, ws, peerId);
+        await handleResumeConsumer(parsedData, ws,peerId);
       }
     });
     ws.on("error", console.error);
@@ -112,8 +113,6 @@ const handleCreateWebRtcTransport = async (
       preferUdp: true,
       initialAvailableOutgoingBitrate: 1000000,
     });
-    console.log("Transport created");
-    console.log(transport, "transport");
 
     const peer = peers.get(peerId);
     if (direction === "send") {
@@ -212,13 +211,8 @@ const handleProduce = async (data: any, socket: WebSocket, peerId: string) => {
     console.error("Error producing:", error);
   }
 };
-const handleConsume = async (
-  data: any,
-  socket: WebSocket,
-  router: Router,
-  peerId: string
-) => {
-  const { producerId, rtpCapabilities } = data;
+const handleConsume = async (data: any,socket: WebSocket,router: Router,peerId:string) => {
+  const { producerId, rtpCapabilities,peerId:producerPeerId } = data;
   const peer = peers.get(peerId);
   const producer = getProducerById(producerId);
   if (!producer) {
@@ -229,7 +223,6 @@ const handleConsume = async (
     console.error("Cannot consume this producer with given rtpCapabilities");
     return;
   }
-  console.log("ha can consume");
   const consumerTransport = peer?.transports.recvTransport;
   if (!consumerTransport) {
     console.error("No receiving transport found for peer");
@@ -257,6 +250,7 @@ const handleConsume = async (
       consumer.close();
       peer.consumers.delete(consumer.id);
     });
+    
     socket.send(
       JSON.stringify({
         type: EventTypes.CONSUMED,
@@ -264,6 +258,7 @@ const handleConsume = async (
         producerId,
         kind: consumer.kind,
         rtpParameters: consumer.rtpParameters,
+        producerPeerId: producerPeerId,
       })
     );
   } catch (error) {
@@ -326,3 +321,48 @@ const handleResumeConsumer = async (
     console.error("Consumer not found for resume");
   }
 };
+setInterval(() => {
+  const currentTime = new Date().toISOString();
+  console.log(
+    `Current time: ${currentTime}, Connected peers: ${peers.size}`
+  );
+}, 10000); // Log every 10 seconds
+
+const getPeerStats = () => {
+  const stats = Array.from(peers.entries()).map(([peerId, peer]) => ({
+    peerId,
+    producerCount: peer.producers.size,
+    consumerCount: peer.consumers.size,
+    hasTransports: {
+      send: !!peer.transports.sendTransport,
+      recv: !!peer.transports.recvTransport,
+    },
+  }));
+  return stats;
+};
+setInterval(() => {
+  const stats = getPeerStats();
+  console.log("Peer Stats:", JSON.stringify(stats, null, 2));
+}, 10000); // Log every 30 seconds
+
+function monitorAllPeerConsumers() {
+  setInterval(() => {
+    console.log('--- Checking all peer consumers ---');
+    
+    for (const [peerId, peer] of peers.entries()) {
+      console.log(`Peer: ${peerId}, User ID: ${peer.userId}`);
+
+      for (const [consumerId, consumer] of peer.consumers.entries()) {
+        const isReceiving = !consumer.paused && !consumer.producerPaused;
+
+        console.log(`  Consumer ID: ${consumerId}`);
+        console.log(`    Kind: ${consumer.kind}`);
+        console.log(`    Paused: ${consumer.paused}`);
+        console.log(`    Producer Paused: ${consumer.producerPaused}`);
+        console.log(`    Actively Receiving: ${isReceiving}`);
+      }
+    }
+
+  }, 5000); // Every 5 seconds
+}
+monitorAllPeerConsumers();
