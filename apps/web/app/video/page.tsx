@@ -5,7 +5,7 @@ import { EventTypes } from "@repo/types";
 import { Consumer, Producer, RtpCapabilities, Transport } from "mediasoup-client/types";
 import { Users, Video, VideoOff, Mic, MicOff, Phone, PhoneOff, Settings, Maximize2, Volume2 } from "lucide-react";
 import Link from "next/link";
-
+import { toast } from "sonner"
 type RemoteUser = {
   id: string;
   name?: string;
@@ -92,6 +92,11 @@ export default function VideoCall() {
         console.log("Server error:", data.msg);
         setStatus(`Error: ${data.msg}`);
         break;
+      case EventTypes.PEER_DISCONNECTED:
+        console.log("Peer disconnected:", data.peerId);
+        handlePeerDisconnected(data);
+        break
+
     }
   };
 
@@ -207,7 +212,23 @@ export default function VideoCall() {
       }
     }
   };
-
+  const handlePeerDisconnected = (data:any) => {
+    const {peerId} = data
+    toast.info(`Peer ${peerId} disconnected`, {
+      duration: 3000,
+      position: "top-center",
+      style:{
+        backgroundColor: "#ffffff",
+        color: "#000000",
+      }
+      
+    });
+    setRemoteUsers(prev => {
+      const newUsers = new Map(prev);
+      newUsers.delete(peerId);
+      return newUsers;
+    });
+  }
   const setupProducerTransport = async (transportData: any) => {
     try {
       if (!mediaSoupClientState.current.device) {
@@ -516,6 +537,8 @@ export default function VideoCall() {
       </div>
     );
   };
+  console.log("Remote users:", remoteUsers);
+  console.log("Participant count:", participantCount);
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white relative overflow-hidden">
       {/* Animated background */}
@@ -636,6 +659,7 @@ export default function VideoCall() {
               </div>
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-600/50 to-blue-600/50 opacity-0 group-hover:opacity-100 transition-opacity blur-xl"></div>
             </button>
+            {status !== 'Ready' && status !== "Connected" && <p className="text-white">Please refresh the page </p>}
           </div>
         ) : (
           // In-call screen
@@ -676,11 +700,7 @@ export default function VideoCall() {
 
               {/* Remote users */}
               {Array.from(remoteUsers.values()).map((user) => {
-                // if (!user.stream) return null; // Skip users without a stream
-                // if (user.id === mediaSoupClientState.current.localStream?.id) return null; // Skip local user
-                // console.log(user, "remote user in map");
-                // const hasVideo = user.videoEnabled && user.stream?.getVideoTracks().length > 0;
-                // console.log(`User ${user.id} has video:`, hasVideo, user.stream?.getVideoTracks());
+                if (!user.stream) return null; 
                 return (
                   <RemoteUserCard key={user.id} user={user} />
                   

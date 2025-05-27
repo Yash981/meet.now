@@ -94,6 +94,16 @@ wss.on(
         peer.transports.recvTransport?.close?.();
         peers.delete(peerId);
       }
+      for (const [otherPeerId, otherPeer] of peers.entries()) {
+        if (otherPeerId !== peerId) {
+          otherPeer.ws.send(
+            JSON.stringify({
+              type: EventTypes.PEER_DISCONNECTED,
+              peerId,
+            })
+          );
+        }
+      }
     });
   }
 );
