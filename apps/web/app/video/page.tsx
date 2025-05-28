@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Device } from "mediasoup-client";
 import { EventTypes } from "@repo/types";
 import { Consumer, Producer, RtpCapabilities, Transport } from "mediasoup-client/types";
-import { Users, Video, VideoOff, Mic, MicOff, Phone, PhoneOff, Settings, Maximize2, Volume2,MonitorUp,MonitorX } from "lucide-react";
+import { Users, Video, VideoOff, Mic, MicOff, Phone, PhoneOff, Settings, Maximize2, Volume2, MonitorUp, MonitorX } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner"
 type RemoteUser = {
@@ -109,12 +109,12 @@ export default function VideoCall() {
 
     }
   };
-  const toggleScreenShare = async (browserStopSharing?:boolean) => {
+  const toggleScreenShare = async (browserStopSharing?: boolean) => {
     console.log("Toggle screen sharing:", isScreenSharing, browserStopSharing);
-    if (isScreenSharing || browserStopSharing===true) {
+    if (isScreenSharing || browserStopSharing === true) {
       console.log('Stopping screen sharing...');
       try {
-      if (mediaSoupClientState.current.screenStream) {
+        if (mediaSoupClientState.current.screenStream) {
           mediaSoupClientState.current.screenStream.getTracks().forEach(track => track.stop());
           mediaSoupClientState.current.screenStream = null;
         }
@@ -122,35 +122,43 @@ export default function VideoCall() {
         // Find and close screen producer
         const screenProducer = Array.from(mediaSoupClientState.current.producers.values())
           .find(producer => producer.appData?.type === 'screen');
-        
+
         if (screenProducer) {
           screenProducer.close();
           mediaSoupClientState.current.producers.delete(screenProducer.id);
-          
+
           // Notify server to remove screen producer
           wsRef.current?.send(JSON.stringify({
             type: EventTypes.PRODUCER_CLOSED,
             producerId: screenProducer.id,
             kind: "screen"
           }));
-      }
-      // Stop screen sharing
-      const localVideoEl = document.getElementById("local-video") as HTMLVideoElement;
-      if (localVideoEl) {
-        localVideoEl.srcObject = mediaSoupClientState.current.localStream;
-      }
-      setIsScreenSharing(false);
-      setStatus("In call");
-      toast.success("Screen sharing stopped", {
+        }
+        // Stop screen sharing
+        const localVideoEl = document.getElementById("screen-video") as HTMLVideoElement;
+        if (localVideoEl) {
+          localVideoEl.srcObject = mediaSoupClientState.current.localStream;
+        }
+        setIsScreenSharing(false);
+        setStatus("In call");
+        toast.success("Screen sharing stopped", {
           duration: 3000,
           position: "top-center",
-      });
+          style: {
+            backgroundColor: "#ffffff",
+            color: "#000000",
+          }
+        });
       } catch (error) {
         console.error("Error stopping screen sharing:", error);
         setStatus("Error stopping screen sharing");
         toast.error("Error stopping screen sharing", {
           duration: 3000,
           position: "top-center",
+          style: {
+            backgroundColor: "#ffffff",
+            color: "#000000",
+          }
         });
       }
     } else {
@@ -158,46 +166,50 @@ export default function VideoCall() {
       // Start screen sharing
       try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video:{
-            displaySurface:"monitor",
-            width:{ideal:1920,max:1920},
-            height:{ideal:1080,max:1080},
-            frameRate:{ideal:15,max:30}
+          video: {
+            displaySurface: "monitor",
+            width: { ideal: 1920, max: 1920 },
+            height: { ideal: 1080, max: 1080 },
+            frameRate: { ideal: 15, max: 30 }
           }
         })
         mediaSoupClientState.current.screenStream = screenStream;
 
-        screenStream.getVideoTracks()[0]?.addEventListener("ended",async ()=>{
+        screenStream.getVideoTracks()[0]?.addEventListener("ended", async () => {
           console.log('Screen sharing ended by user');
           await toggleScreenShare(true)
         })
 
-        const localVideoEl = document.getElementById("local-video") as HTMLVideoElement;
-        if(localVideoEl){
-          localVideoEl.srcObject = screenStream
-        }
-        if(mediaSoupClientState.current.sendTransport){
+        // const localVideoEl = document.getElementById("screen-video") as HTMLVideoElement;
+        // if (localVideoEl) {
+        //   localVideoEl.srcObject = screenStream
+        // }
+        if (mediaSoupClientState.current.sendTransport) {
           const videoTrack = screenStream.getVideoTracks()[0];
-          if(videoTrack){
+          if (videoTrack) {
+            setIsScreenSharing(true);
             const screenProducer = await mediaSoupClientState.current.sendTransport.produce({
-              track:videoTrack,
-              encodings:[
+              track: videoTrack,
+              encodings: [
                 { rid: "r0", maxBitrate: 500000, scalabilityMode: "S1T3" },
                 { rid: "r1", maxBitrate: 1000000, scalabilityMode: "S1T3" },
                 { rid: "r2", maxBitrate: 2000000, scalabilityMode: "S1T3" }
               ],
-              codecOptions:{videoGoogleStartBitrate:1000},
-              appData:{type:"screen"}
+              codecOptions: { videoGoogleStartBitrate: 1000 },
+              appData: { type: "screen" }
             })
-            if(screenProducer){
-              mediaSoupClientState.current.producers.set(screenProducer.id,screenProducer);
+            if (screenProducer) {
+              mediaSoupClientState.current.producers.set(screenProducer.id, screenProducer);
             }
           }
-          setIsScreenSharing(true);
           setStatus("Screen Sharing active");
-          toast.success("Screen Sharing Started",{
-            duration:3000,
-            position:"top-center"
+          toast.success("Screen Sharing Started", {
+            duration: 3000,
+            position: "top-center",
+            style: {
+              backgroundColor: "#ffffff",
+              color: "#000000",
+            }
           })
         }
       } catch (error) {
@@ -206,11 +218,23 @@ export default function VideoCall() {
         toast.error("Failed to start screen sharing", {
           duration: 3000,
           position: "top-center",
+          style: {
+            backgroundColor: "#ffffff",
+            color: "#000000",
+          }
         });
       }
     }
 
-    }  
+  }
+  useEffect(()=>{
+    if(isScreenSharing && mediaSoupClientState.current.screenStream){
+      const localVideoEl = document.getElementById("screen-video") as HTMLVideoElement;
+        if (localVideoEl) {
+          localVideoEl.srcObject = mediaSoupClientState.current.screenStream
+        }
+    }
+  },[isScreenSharing])
   const connectWebSocket = () => {
     const ws = new WebSocket("ws://localhost:8080");
     wsRef.current = ws;
@@ -261,7 +285,11 @@ export default function VideoCall() {
 
       const stream = await navigator.mediaDevices.getUserMedia({
         video: isVideoEnabled,
-        audio: isAudioEnabled
+        audio: isAudioEnabled ? {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        } : false,
       });
 
       mediaSoupClientState.current.localStream = stream;
@@ -327,16 +355,16 @@ export default function VideoCall() {
       }
     }
   };
-  const handlePrdoucerClosedScreenShareNotification = (data:any) => {
-    const {peerId,producerId,kind,appData} = data;
+  const handlePrdoucerClosedScreenShareNotification = (data: any) => {
+    const { peerId, producerId, kind, appData } = data;
     toast.info(`Peer ${peerId} stopped screen sharing`, {
       duration: 3000,
       position: "top-center",
-      style:{
+      style: {
         backgroundColor: "#ffffff",
         color: "#000000",
       }
-      
+
     });
     setRemoteUsers(prev => {
       const newUsers = new Map(prev);
@@ -359,16 +387,16 @@ export default function VideoCall() {
       return newUsers;
     });
   }
-  const handlePeerDisconnected = (data:any) => {
-    const {peerId} = data
+  const handlePeerDisconnected = (data: any) => {
+    const { peerId } = data
     toast.info(`Peer ${peerId} disconnected`, {
       duration: 3000,
       position: "top-center",
-      style:{
+      style: {
         backgroundColor: "#ffffff",
         color: "#000000",
       }
-      
+
     });
     setRemoteUsers(prev => {
       const newUsers = new Map(prev);
@@ -408,7 +436,7 @@ export default function VideoCall() {
         }
       });
 
-      transport.on("produce", async ({ kind, rtpParameters,appData }, callback, errback) => {
+      transport.on("produce", async ({ kind, rtpParameters, appData }, callback, errback) => {
         try {
           const handleProduced = (event: MessageEvent) => {
             const data = JSON.parse(event.data);
@@ -453,8 +481,9 @@ export default function VideoCall() {
       if (isAudioEnabled) {
         const audioTrack = mediaSoupClientState.current.localStream?.getAudioTracks()[0];
         if (audioTrack) {
-          const audioProducer = await transport.produce({ track: audioTrack,appData: { type: 'microphone' }
- });
+          const audioProducer = await transport.produce({
+            track: audioTrack, appData: { type: 'microphone' }
+          });
           if (audioProducer) {
             mediaSoupClientState.current.producers.set(audioProducer.id, audioProducer);
           }
@@ -470,7 +499,7 @@ export default function VideoCall() {
 
   const handleNewProducer = async (data: any) => {
     try {
-      const { producerId, kind, peerId,appData } = data;
+      const { producerId, kind, peerId, appData } = data;
       wsRef.current?.send(JSON.stringify({
         type: EventTypes.CONSUME,
         producerId,
@@ -530,7 +559,7 @@ export default function VideoCall() {
         producerId: data.producerId,
         kind: data.kind,
         rtpParameters: data.rtpParameters,
-        appData:data.appData,
+        appData: data.appData,
       });
 
       if (!consumer) return;
@@ -538,18 +567,18 @@ export default function VideoCall() {
       mediaSoupClientState.current.consumers.set(consumer.id, consumer);
       const userId = data.producerPeerId;
       const isScreenShare = data.appData?.type === "screen";
-      
+
       setRemoteUsers(prev => {
         const newUsers = new Map(prev);
         const existingUser = newUsers.get(userId) || {
           id: userId,
-          name:"",
-          videoEnabled:false,
-          audioEnabled:false,
-          screenEnabled:false,
+          name: "",
+          videoEnabled: false,
+          audioEnabled: false,
+          screenEnabled: false,
         } as RemoteUser
-        if(isScreenShare){
-          if(!existingUser.screenStream){
+        if (isScreenShare) {
+          if (!existingUser.screenStream) {
             existingUser.screenStream = new MediaStream([consumer.track]);
 
           } else {
@@ -558,7 +587,7 @@ export default function VideoCall() {
           existingUser.screenConsumer = consumer;
           existingUser.screenEnabled = true
         } else {
-          if(!existingUser.stream){
+          if (!existingUser.stream) {
             existingUser.stream = new MediaStream([consumer.track]);
 
           } else {
@@ -572,10 +601,10 @@ export default function VideoCall() {
             existingUser.audioEnabled = true;
           }
         }
-        newUsers.set(userId,existingUser);
+        newUsers.set(userId, existingUser);
         return newUsers
       });
-      
+
       wsRef.current?.send(
         JSON.stringify({
           type: EventTypes.RESUME_CONSUMER,
@@ -614,8 +643,8 @@ export default function VideoCall() {
 
   const getGridClass = () => {
     const userCount = remoteUsers.size;
-    const hasScreenShare = Array.from(remoteUsers.values()).some(user =>user.screenEnabled);
-    if(hasScreenShare){
+    const hasScreenShare = Array.from(remoteUsers.values()).some(user => user.screenEnabled);
+    if (hasScreenShare) {
       return "grid-cols-1 lg:grid-cols-4";
     }
     if (userCount === 0) return "grid-cols-1";
@@ -655,7 +684,7 @@ export default function VideoCall() {
       };
 
       setupMedia();
-    }, [user.stream, user.audioConsumer,user.screenStream]);
+    }, [user.stream, user.audioConsumer, user.screenStream]);
     console.log(user.stream, user.videoEnabled, "remote user ", user.id)
     if (user.screenEnabled && user.screenStream) {
       return (
@@ -668,7 +697,7 @@ export default function VideoCall() {
                 autoPlay
                 playsInline
               />
-              
+
               {/* Screen share indicator */}
               <div className="absolute top-3 left-3">
                 <div className="flex items-center space-x-2 bg-blue-500/80 backdrop-blur-sm px-3 py-1 rounded-lg">
@@ -688,6 +717,7 @@ export default function VideoCall() {
                     autoPlay
                     playsInline
                     muted
+                    id="screen-video"
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-700 to-slate-800">
@@ -917,14 +947,24 @@ export default function VideoCall() {
                     )}
                   </div>
                 </div>
+                {isScreenSharing && <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 aspect-video shadow-2xl border border-slate-700/50">
+                  <video
+                    id="screen-video"
+                    className="w-full h-full object-cover"
+                    autoPlay
+                    muted
+                    playsInline
+
+                  />
+                </div>}
               </div>
 
               {/* Remote users */}
               {Array.from(remoteUsers.values()).map((user) => {
-                if (!user.stream) return null; 
+                if (!user.stream) return null;
                 return (
                   <RemoteUserCard key={user.id} user={user} />
-                  
+
                 )
               })}
             </div>
@@ -951,8 +991,8 @@ export default function VideoCall() {
                 >
                   {isVideoEnabled ? <Video size={20} /> : <VideoOff size={20} />}
                 </button>
-                <button onClick={()=>toggleScreenShare()} className={`p-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-white transition-all`}>
-                  {isScreenSharing ? <MonitorX size={20}/>  :<MonitorUp size={20} />}
+                <button onClick={() => toggleScreenShare()} className={`p-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-white transition-all`}>
+                  {isScreenSharing ? <MonitorX size={20} /> : <MonitorUp size={20} />}
                 </button>
                 <button
                   onClick={endCall}
