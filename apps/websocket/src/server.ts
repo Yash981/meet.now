@@ -24,7 +24,6 @@ export type Peer = {
     sendTransport: Transport;
     recvTransport: Transport;
   };
-  userId: string;
   producers: Map<string, Producer>;
   consumers: Map<string, Consumer>;
 };
@@ -46,7 +45,6 @@ wss.on(
         sendTransport: {} as Transport,
         recvTransport: {} as Transport,
       },
-      userId: peerId,
       producers: new Map(),
       consumers: new Map(),
     });
@@ -80,6 +78,8 @@ wss.on(
         await handleConsume(parsedData, ws, router,peerId);
       } else if (parsedData.type === EventTypes.RESUME_CONSUMER) {
         await handleResumeConsumer(parsedData, ws,peerId);
+      } else if(parsedData.type === EventTypes.PRODUCER_CLOSED){
+        await handleProducerClosed(parsedData,ws,peerId);
       }
     });
     ws.on("error", console.error);
@@ -183,14 +183,14 @@ const handleProducerConsumerConnectTransport = async (
 };
 const handleProduce = async (data: any, socket: WebSocket, peerId: string) => {
   const peer = peers.get(peerId);
-  const { kind, rtpParameters } = data;
+  const { kind, rtpParameters,appData } = data;
   const transport = peer?.transports.sendTransport;
   if (!transport) {
     console.error("No transport found");
     return;
   }
   try {
-    const producer = await transport?.produce({ kind, rtpParameters });
+    const producer = await transport?.produce({ kind, rtpParameters,appData });
     peer?.producers.set(producer.id, producer);
     producer.on("transportclose", () => {
       console.log("Producer transport closed");
@@ -213,6 +213,7 @@ const handleProduce = async (data: any, socket: WebSocket, peerId: string) => {
             producerId: producer.id,
             kind: producer.kind,
             peerId,
+            appData:producer.appData
           })
         );
       }
@@ -222,7 +223,7 @@ const handleProduce = async (data: any, socket: WebSocket, peerId: string) => {
   }
 };
 const handleConsume = async (data: any,socket: WebSocket,router: Router,peerId:string) => {
-  const { producerId, rtpCapabilities,peerId:producerPeerId } = data;
+  const { producerId, rtpCapabilities,peerId:producerPeerId,appData } = data;
   const peer = peers.get(peerId);
   const producer = getProducerById(producerId);
   if (!producer) {
@@ -243,6 +244,7 @@ const handleConsume = async (data: any,socket: WebSocket,router: Router,peerId:s
       producerId,
       rtpCapabilities,
       paused: true,
+      appData:appData
     });
     peer.consumers.set(consumer.id, consumer);
     consumer?.on("transportclose", () => {
@@ -269,6 +271,7 @@ const handleConsume = async (data: any,socket: WebSocket,router: Router,peerId:s
         kind: consumer.kind,
         rtpParameters: consumer.rtpParameters,
         producerPeerId: producerPeerId,
+        appData: consumer.appData,
       })
     );
   } catch (error) {
@@ -305,6 +308,8 @@ const notifyNewPeerOfExistingProducers = (
             producerId: producer.id,
             kind: producer.kind,
             peerId: existingPeerId,
+            appData:producer.appData
+
           })
         );
       });
@@ -360,7 +365,7 @@ function monitorAllPeerConsumers() {
     console.log('--- Checking all peer consumers ---');
     
     for (const [peerId, peer] of peers.entries()) {
-      console.log(`Peer: ${peerId}, User ID: ${peer.userId}`);
+      console.log(`Peer: ${peerId}`);
 
       for (const [consumerId, consumer] of peer.consumers.entries()) {
         const isReceiving = !consumer.paused && !consumer.producerPaused;
@@ -376,3 +381,49 @@ function monitorAllPeerConsumers() {
   }, 5000); // Every 5 seconds
 }
 monitorAllPeerConsumers();
+
+const handleProducerClosed = async (data: any, socket: WebSocket, peerId: string) => {
+  const { producerId, kind } = data;
+  try {
+    const peer = peers.get(peerId);
+    
+    if (!peer) {
+      console.error(`Peer ${peerId} not found`);
+      return;
+    }
+
+    // Find and close the producer
+    const producer = peer.producers.get(producerId);
+    if (producer) {
+      // Close the producer
+      producer.close();
+      peer.producers.delete(producerId);
+      
+      console.log(`Producer ${producerId} (${kind}) closed for peer ${peerId}`);
+      
+      // Notify all other peers about the producer closure
+      const notificationMessage = {
+        type: EventTypes.PRODUCER_CLOSED_NOTIFICATION,
+        peerId: peerId,
+        producerId: producerId,
+        kind: kind,
+        appData: producer.appData //( type: 'screen')
+      };
+      
+
+      peers.forEach((otherPeer, otherPeerId) => {
+        if (otherPeerId !== peerId && otherPeer.ws.readyState === WebSocket.OPEN) {
+          otherPeer.ws.send(JSON.stringify(notificationMessage));
+        }
+      });
+    }
+    } catch (error) {
+      console.error(`Error closing producer ${producerId} for peer ${peerId}:`, error);
+      socket.send(
+        JSON.stringify({
+          type: EventTypes.ERROR,
+          msg: `Failed to close producer: ${(error as Error).message}`,
+        })
+      );
+    }
+  }
