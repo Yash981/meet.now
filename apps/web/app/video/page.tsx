@@ -134,11 +134,6 @@ export default function VideoCall() {
             kind: "screen"
           }));
         }
-        // Stop screen sharing
-        const localVideoEl = document.getElementById("screen-video") as HTMLVideoElement;
-        if (localVideoEl) {
-          localVideoEl.srcObject = mediaSoupClientState.current.localStream;
-        }
         setIsScreenSharing(false);
         setStatus("In call");
         toast.success("Screen sharing stopped", {
@@ -180,10 +175,7 @@ export default function VideoCall() {
           await toggleScreenShare(true)
         })
 
-        // const localVideoEl = document.getElementById("screen-video") as HTMLVideoElement;
-        // if (localVideoEl) {
-        //   localVideoEl.srcObject = screenStream
-        // }
+
         if (mediaSoupClientState.current.sendTransport) {
           const videoTrack = screenStream.getVideoTracks()[0];
           if (videoTrack) {
@@ -227,14 +219,7 @@ export default function VideoCall() {
     }
 
   }
-  useEffect(()=>{
-    if(isScreenSharing && mediaSoupClientState.current.screenStream){
-      const localVideoEl = document.getElementById("screen-video") as HTMLVideoElement;
-        if (localVideoEl) {
-          localVideoEl.srcObject = mediaSoupClientState.current.screenStream
-        }
-    }
-  },[isScreenSharing])
+
   const connectWebSocket = () => {
     const ws = new WebSocket("ws://localhost:8080");
     wsRef.current = ws;
@@ -947,16 +932,7 @@ export default function VideoCall() {
                     )}
                   </div>
                 </div>
-                {isScreenSharing && <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 aspect-video shadow-2xl border border-slate-700/50">
-                  <video
-                    id="screen-video"
-                    className="w-full h-full object-cover"
-                    autoPlay
-                    muted
-                    playsInline
-
-                  />
-                </div>}
+                
               </div>
 
               {/* Remote users */}
@@ -991,7 +967,10 @@ export default function VideoCall() {
                 >
                   {isVideoEnabled ? <Video size={20} /> : <VideoOff size={20} />}
                 </button>
-                <button onClick={() => toggleScreenShare()} className={`p-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-white transition-all`}>
+                <button onClick={() => toggleScreenShare()} className={`p-3 rounded-xl ${!isScreenSharing
+                    ? 'bg-slate-700 hover:bg-slate-600 text-white'
+                    : 'bg-red-500 hover:bg-red-600 text-white'
+                    } transition-all`}>
                   {isScreenSharing ? <MonitorX size={20} /> : <MonitorUp size={20} />}
                 </button>
                 <button
