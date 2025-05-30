@@ -1,18 +1,13 @@
 import { WebSocket, WebSocketServer } from "ws";
 import {
+  audioLevelObserver,
   generatePeerId,
   getRouter,
   startRouter,
   startWorker,
 } from "./mediasoup-config";
 import { EventTypes } from "@repo/types";
-import {
-  Consumer,
-  Producer,
-  Router,
-  Transport,
-  WebRtcTransport,
-} from "mediasoup/types";
+import { Consumer, Producer, Router, Transport } from "mediasoup/types";
 import { IncomingMessage } from "http";
 const wss = new WebSocketServer({ port: 8080 });
 wss.on("listening", () => {
@@ -27,7 +22,7 @@ export type Peer = {
   producers: Map<string, Producer>;
   consumers: Map<string, Consumer>;
 };
-const peers = new Map<string, Peer>();
+export const peers = new Map<string, Peer>();
 (async () => {
   await startWorker();
   await startRouter();
@@ -75,11 +70,11 @@ wss.on(
       } else if (parsedData.type === EventTypes.PRODUCE) {
         await handleProduce(parsedData, ws, peerId);
       } else if (parsedData.type === EventTypes.CONSUME) {
-        await handleConsume(parsedData, ws, router,peerId);
+        await handleConsume(parsedData, ws, router, peerId);
       } else if (parsedData.type === EventTypes.RESUME_CONSUMER) {
-        await handleResumeConsumer(parsedData, ws,peerId);
-      } else if(parsedData.type === EventTypes.PRODUCER_CLOSED){
-        await handleProducerClosed(parsedData,ws,peerId);
+        await handleResumeConsumer(parsedData, ws, peerId);
+      } else if (parsedData.type === EventTypes.PRODUCER_CLOSED) {
+        await handleProducerClosed(parsedData, ws, peerId);
       }
     });
     ws.on("error", console.error);
@@ -146,6 +141,7 @@ const handleCreateWebRtcTransport = async (
         iceCandidates: transport.iceCandidates,
         iceParameters: transport.iceParameters,
         dtlsParameters: transport.dtlsParameters,
+        userId: peerId,
       })
     );
     return transport;
@@ -183,19 +179,37 @@ const handleProducerConsumerConnectTransport = async (
 };
 const handleProduce = async (data: any, socket: WebSocket, peerId: string) => {
   const peer = peers.get(peerId);
-  const { kind, rtpParameters,appData } = data;
+  const { kind, rtpParameters, appData } = data;
   const transport = peer?.transports.sendTransport;
   if (!transport) {
     console.error("No transport found");
     return;
   }
   try {
-    const producer = await transport?.produce({ kind, rtpParameters,appData });
+    const producer = await transport?.produce({ kind, rtpParameters, appData });
     peer?.producers.set(producer.id, producer);
+    console.log(
+      `Producer created: ${producer.id}, kind: ${kind}`,
+      audioLevelObserver
+    );
+    if (producer.kind === "audio" && audioLevelObserver) {
+      console.log("going to add producer to active speaker observer");
+      await audioLevelObserver.addProducer({ producerId: producer.id });
+      // getActiveSpeakerObserver();
+    }
     producer.on("transportclose", () => {
       console.log("Producer transport closed");
+      if (audioLevelObserver) {
+        try {
+          audioLevelObserver.removeProducer({ producerId: producer.id });
+        } catch (err) {
+          console.warn("Producer already removed from ActiveSpeakerObserver");
+        }
+      }
+
       producer.close();
     });
+
     socket.send(
       JSON.stringify({
         type: EventTypes.PRODUCED,
@@ -213,7 +227,7 @@ const handleProduce = async (data: any, socket: WebSocket, peerId: string) => {
             producerId: producer.id,
             kind: producer.kind,
             peerId,
-            appData:producer.appData
+            appData: producer.appData,
           })
         );
       }
@@ -222,8 +236,13 @@ const handleProduce = async (data: any, socket: WebSocket, peerId: string) => {
     console.error("Error producing:", error);
   }
 };
-const handleConsume = async (data: any,socket: WebSocket,router: Router,peerId:string) => {
-  const { producerId, rtpCapabilities,peerId:producerPeerId,appData } = data;
+const handleConsume = async (
+  data: any,
+  socket: WebSocket,
+  router: Router,
+  peerId: string
+) => {
+  const { producerId, rtpCapabilities, peerId: producerPeerId, appData } = data;
   const peer = peers.get(peerId);
   const producer = getProducerById(producerId);
   if (!producer) {
@@ -244,7 +263,7 @@ const handleConsume = async (data: any,socket: WebSocket,router: Router,peerId:s
       producerId,
       rtpCapabilities,
       paused: true,
-      appData:appData
+      appData: appData,
     });
     peer.consumers.set(consumer.id, consumer);
     consumer?.on("transportclose", () => {
@@ -262,7 +281,7 @@ const handleConsume = async (data: any,socket: WebSocket,router: Router,peerId:s
       consumer.close();
       peer.consumers.delete(consumer.id);
     });
-    
+
     socket.send(
       JSON.stringify({
         type: EventTypes.CONSUMED,
@@ -308,8 +327,7 @@ const notifyNewPeerOfExistingProducers = (
             producerId: producer.id,
             kind: producer.kind,
             peerId: existingPeerId,
-            appData:producer.appData
-
+            appData: producer.appData,
           })
         );
       });
@@ -336,12 +354,10 @@ const handleResumeConsumer = async (
     console.error("Consumer not found for resume");
   }
 };
-setInterval(() => {
-  const currentTime = new Date().toISOString();
-  console.log(
-    `Current time: ${currentTime}, Connected peers: ${peers.size}`
-  );
-}, 10000); // Log every 10 seconds
+// setInterval(() => {
+//   const currentTime = new Date().toISOString();
+//   console.log(`Current time: ${currentTime}, Connected peers: ${peers.size}`);
+// }, 10000); // Log every 10 seconds
 
 const getPeerStats = () => {
   const stats = Array.from(peers.entries()).map(([peerId, peer]) => ({
@@ -355,38 +371,42 @@ const getPeerStats = () => {
   }));
   return stats;
 };
-setInterval(() => {
-  const stats = getPeerStats();
-  console.log("Peer Stats:", JSON.stringify(stats, null, 2));
-}, 10000); // Log every 30 seconds
+// setInterval(() => {
+//   const stats = getPeerStats();
+//   console.log("Peer Stats:", JSON.stringify(stats, null, 2));
+// }, 10000); // Log every 30 seconds
 
-function monitorAllPeerConsumers() {
-  setInterval(() => {
-    console.log('--- Checking all peer consumers ---');
-    
-    for (const [peerId, peer] of peers.entries()) {
-      console.log(`Peer: ${peerId}`);
+// function monitorAllPeerConsumers() {
+//   setInterval(() => {
+//     console.log('--- Checking all peer consumers ---');
 
-      for (const [consumerId, consumer] of peer.consumers.entries()) {
-        const isReceiving = !consumer.paused && !consumer.producerPaused;
+//     for (const [peerId, peer] of peers.entries()) {
+//       console.log(`Peer: ${peerId}`);
 
-        console.log(`  Consumer ID: ${consumerId}`);
-        console.log(`    Kind: ${consumer.kind}`);
-        console.log(`    Paused: ${consumer.paused}`);
-        console.log(`    Producer Paused: ${consumer.producerPaused}`);
-        console.log(`    Actively Receiving: ${isReceiving}`);
-      }
-    }
+//       for (const [consumerId, consumer] of peer.consumers.entries()) {
+//         const isReceiving = !consumer.paused && !consumer.producerPaused;
 
-  }, 5000); // Every 5 seconds
-}
-monitorAllPeerConsumers();
+//         console.log(`  Consumer ID: ${consumerId}`);
+//         console.log(`    Kind: ${consumer.kind}`);
+//         console.log(`    Paused: ${consumer.paused}`);
+//         console.log(`    Producer Paused: ${consumer.producerPaused}`);
+//         console.log(`    Actively Receiving: ${isReceiving}`);
+//       }
+//     }
 
-const handleProducerClosed = async (data: any, socket: WebSocket, peerId: string) => {
+//   }, 5000); // Every 5 seconds
+// }
+// monitorAllPeerConsumers();
+
+const handleProducerClosed = async (
+  data: any,
+  socket: WebSocket,
+  peerId: string
+) => {
   const { producerId, kind } = data;
   try {
     const peer = peers.get(peerId);
-    
+
     if (!peer) {
       console.error(`Peer ${peerId} not found`);
       return;
@@ -398,32 +418,69 @@ const handleProducerClosed = async (data: any, socket: WebSocket, peerId: string
       // Close the producer
       producer.close();
       peer.producers.delete(producerId);
-      
+
       console.log(`Producer ${producerId} (${kind}) closed for peer ${peerId}`);
-      
+
       // Notify all other peers about the producer closure
       const notificationMessage = {
         type: EventTypes.PRODUCER_CLOSED_NOTIFICATION,
         peerId: peerId,
         producerId: producerId,
         kind: kind,
-        appData: producer.appData //( type: 'screen')
+        appData: producer.appData, //( type: 'screen')
       };
-      
 
       peers.forEach((otherPeer, otherPeerId) => {
-        if (otherPeerId !== peerId && otherPeer.ws.readyState === WebSocket.OPEN) {
+        if (
+          otherPeerId !== peerId &&
+          otherPeer.ws.readyState === WebSocket.OPEN
+        ) {
           otherPeer.ws.send(JSON.stringify(notificationMessage));
         }
       });
     }
-    } catch (error) {
-      console.error(`Error closing producer ${producerId} for peer ${peerId}:`, error);
-      socket.send(
-        JSON.stringify({
-          type: EventTypes.ERROR,
-          msg: `Failed to close producer: ${(error as Error).message}`,
-        })
-      );
-    }
+  } catch (error) {
+    console.error(
+      `Error closing producer ${producerId} for peer ${peerId}:`,
+      error
+    );
+    socket.send(
+      JSON.stringify({
+        type: EventTypes.ERROR,
+        msg: `Failed to close producer: ${(error as Error).message}`,
+      })
+    );
   }
+};
+// let isObserverInitialized = false;
+// export const getActiveSpeakerObserver = () => {
+//   if (!activeSpeakerObserver) return;
+//   // isObserverInitialized = true;
+//   activeSpeakerObserver.on("dominantspeaker", ({ producer }) => {
+//     try {
+//       if (!producer || !producer.id) {
+//         console.error("No producer found for dominant speaker event");
+//         return;
+//       }
+//       const dominantSpeakerId = producer?.appData?.userId as string;
+//       if (!dominantSpeakerId) {
+//         console.error("No dominant speaker found");
+//         return;
+//       }
+//       console.log(`Dominant speaker changed: ${dominantSpeakerId}`);
+//       if (dominantSpeakerId) {
+//         console.log(`Dominant speaker changed: ${dominantSpeakerId}`);
+//         peers.forEach((peer) => {
+//           peer.ws.send(
+//             JSON.stringify({
+//               type: EventTypes.DOMINANT_SPEAKER,
+//               dominantSpeakerId,
+//             })
+//           );
+//         });
+//       }
+//     } catch (error) {
+//       console.log(error);
+//     }
+//   });
+// };
