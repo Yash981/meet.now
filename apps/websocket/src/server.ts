@@ -195,7 +195,6 @@ const handleProduce = async (data: any, socket: WebSocket, peerId: string) => {
     if (producer.kind === "audio" && audioLevelObserver) {
       console.log("going to add producer to active speaker observer");
       await audioLevelObserver.addProducer({ producerId: producer.id });
-      // getActiveSpeakerObserver();
     }
     producer.on("transportclose", () => {
       console.log("Producer transport closed");
@@ -354,49 +353,19 @@ const handleResumeConsumer = async (
     console.error("Consumer not found for resume");
   }
 };
-// setInterval(() => {
-//   const currentTime = new Date().toISOString();
-//   console.log(`Current time: ${currentTime}, Connected peers: ${peers.size}`);
-// }, 10000); // Log every 10 seconds
 
-const getPeerStats = () => {
-  const stats = Array.from(peers.entries()).map(([peerId, peer]) => ({
-    peerId,
-    producerCount: peer.producers.size,
-    consumerCount: peer.consumers.size,
-    hasTransports: {
-      send: !!peer.transports.sendTransport,
-      recv: !!peer.transports.recvTransport,
-    },
-  }));
-  return stats;
-};
-// setInterval(() => {
-//   const stats = getPeerStats();
-//   console.log("Peer Stats:", JSON.stringify(stats, null, 2));
-// }, 10000); // Log every 30 seconds
-
-// function monitorAllPeerConsumers() {
-//   setInterval(() => {
-//     console.log('--- Checking all peer consumers ---');
-
-//     for (const [peerId, peer] of peers.entries()) {
-//       console.log(`Peer: ${peerId}`);
-
-//       for (const [consumerId, consumer] of peer.consumers.entries()) {
-//         const isReceiving = !consumer.paused && !consumer.producerPaused;
-
-//         console.log(`  Consumer ID: ${consumerId}`);
-//         console.log(`    Kind: ${consumer.kind}`);
-//         console.log(`    Paused: ${consumer.paused}`);
-//         console.log(`    Producer Paused: ${consumer.producerPaused}`);
-//         console.log(`    Actively Receiving: ${isReceiving}`);
-//       }
-//     }
-
-//   }, 5000); // Every 5 seconds
-// }
-// monitorAllPeerConsumers();
+// const getPeerStats = () => {
+//   const stats = Array.from(peers.entries()).map(([peerId, peer]) => ({
+//     peerId,
+//     producerCount: peer.producers.size,
+//     consumerCount: peer.consumers.size,
+//     hasTransports: {
+//       send: !!peer.transports.sendTransport,
+//       recv: !!peer.transports.recvTransport,
+//     },
+//   }));
+//   return stats;
+// };
 
 const handleProducerClosed = async (
   data: any,
@@ -452,35 +421,3 @@ const handleProducerClosed = async (
     );
   }
 };
-// let isObserverInitialized = false;
-// export const getActiveSpeakerObserver = () => {
-//   if (!activeSpeakerObserver) return;
-//   // isObserverInitialized = true;
-//   activeSpeakerObserver.on("dominantspeaker", ({ producer }) => {
-//     try {
-//       if (!producer || !producer.id) {
-//         console.error("No producer found for dominant speaker event");
-//         return;
-//       }
-//       const dominantSpeakerId = producer?.appData?.userId as string;
-//       if (!dominantSpeakerId) {
-//         console.error("No dominant speaker found");
-//         return;
-//       }
-//       console.log(`Dominant speaker changed: ${dominantSpeakerId}`);
-//       if (dominantSpeakerId) {
-//         console.log(`Dominant speaker changed: ${dominantSpeakerId}`);
-//         peers.forEach((peer) => {
-//           peer.ws.send(
-//             JSON.stringify({
-//               type: EventTypes.DOMINANT_SPEAKER,
-//               dominantSpeakerId,
-//             })
-//           );
-//         });
-//       }
-//     } catch (error) {
-//       console.log(error);
-//     }
-//   });
-// };
