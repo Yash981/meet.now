@@ -8,7 +8,7 @@ import {
   Transport,
   WebRtcTransport,
 } from "mediasoup/types";
-import { WorkerManager } from "./worker-manager";
+import WorkerManager from "./worker-manager";
 import { mediaCodecs } from "../utils";
 import { EventTypes } from "@repo/types";
 import { WebSocket } from "ws";
@@ -25,7 +25,7 @@ export type Peer = {
 
 export class Room {
   public router: Router | undefined;
-  private audioLevelObserver: AudioLevelObserver | undefined; 
+  private audioLevelObserver: AudioLevelObserver | undefined;
   private peers: Map<string, Peer> = new Map();
 
   constructor() {
@@ -164,7 +164,7 @@ export class Room {
   }
 
   private async initRouter(): Promise<void> {
-    const worker = new WorkerManager();
+    const worker = WorkerManager.getInstance();
     const workerInstance = worker.getWorker();
     if (!workerInstance) {
       throw new Error("Worker is not initialized");
@@ -203,6 +203,9 @@ export class Room {
       transport = await this.createTransport(peerId, direction);
     } else if (direction === "recv") {
       transport = await this.createTransport(peerId, direction);
+      setTimeout(()=>{
+        this.notifyNewPeerOfExistingProducers(peerId, socket);
+      },100)
     } else {
       throw new Error(`Invalid transport direction: ${direction}`);
     }
@@ -228,7 +231,8 @@ export class Room {
       throw new Error(`Peer with ID ${peerId} does not exist`);
     }
     const { transportId, dtlsParameters, direction } = data;
-    const transport = peer?.transports[`${direction}Transport` as keyof Peer["transports"]];
+    const transport =
+      peer?.transports[`${direction}Transport` as keyof Peer["transports"]];
     if (!transport || transport.id !== transportId) {
       throw new Error(
         `Transport with ID ${transportId} does not exist for peer ${peerId}`
@@ -277,7 +281,7 @@ export class Room {
       socket.send(
         JSON.stringify({
           type: EventTypes.PRODUCED,
-          producerId: producer.id,
+          id: producer.id,
           kind: producer.kind,
           rtpParameters: producer.rtpParameters,
         })
@@ -286,8 +290,8 @@ export class Room {
         {
           type: EventTypes.NEW_PRODUCER,
           producerId: producer.id,
-          peerId: peerId,
           kind: producer.kind,
+          peerId,
           appData: producer.appData,
         },
         peerId
@@ -430,20 +434,22 @@ export class Room {
       if (!peer) {
         throw new Error(`Peer with ID ${peerId} does not exist`);
       }
-      const producer = this.getProducerById(producerId);
+      const producer = peer.producers.get(producerId);
       if (!producer) {
         throw new Error(`Producer with ID ${producerId} does not exist`);
       }
-      producer.close();
-      peer.producers.delete(producerId);
-      const notificationMsg = {
-        type: EventTypes.PRODUCER_CLOSED_NOTIFICATION,
-        producerId,
-        peerId,
-        kind,
-        appData: producer.appData,
-      };
-      this.broadcast(notificationMsg, peerId);
+      if (producer) {
+        producer.close();
+        peer.producers.delete(producerId);
+        const notificationMsg = {
+          type: EventTypes.PRODUCER_CLOSED_NOTIFICATION,
+          producerId,
+          peerId,
+          kind,
+          appData: producer.appData,
+        };
+        this.broadcast(notificationMsg, peerId);
+      }
     } catch (error) {
       console.error("Error handling producer closed:", error);
       socket.send(
@@ -474,7 +480,10 @@ export class Room {
         ({ producer }) => producer.appData.userId
       );
       if (!speakingUsers) return;
-      this.broadcast({type: EventTypes.SPEAKING_USERS, speakingUsers: speakingUsers}, "");
+      this.broadcast(
+        { type: EventTypes.SPEAKING_USERS, speakingUsers: speakingUsers },
+        ""
+      );
     });
     this.audioLevelObserver.on("silence", () => {
       this.broadcast(
@@ -486,7 +495,11 @@ export class Room {
       );
     });
   }
-  async handleResumeConsumer(data: any, socket: WebSocket, peerId: string): Promise<void> {
+  async handleResumeConsumer(
+    data: any,
+    socket: WebSocket,
+    peerId: string
+  ): Promise<void> {
     const { consumerId } = data;
     const peer = this.getPeer(peerId);
     if (!peer) {
@@ -504,7 +517,6 @@ export class Room {
           consumerId: consumer.id,
         })
       );
-      
     } catch (error) {
       console.error("Error resuming consumer:", error);
       socket.send(

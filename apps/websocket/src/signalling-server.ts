@@ -3,19 +3,27 @@ import { roomManager } from "./managers/room-manager";
 import { IncomingMessage } from "http";
 import { EventTypes } from "@repo/types";
 import { generateRandomId } from "./utils";
+import WorkerManager from "./managers/worker-manager";
+import { Room } from "./managers/room";
 
 const wss = new WebSocketServer({ port: 8080 });
 
 wss.on("listening", () => {
   console.log("WebSocket server is now running on 8080");
 });
-
+async function init() {
+    const workerMngr = WorkerManager.getInstance();
+    await workerMngr.init();
+    console.log(workerMngr.getWorker(),'workerMngr')
+    const roomm = new Room()
+    console.log(roomm.getRouter())
+}
+init();
 wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     console.log("New client connected");
     const peerId = generateRandomId();
     
     ws.on("message", async (message: string) => {
-        console.log(`Received message: ${message}`);
         const data = JSON.parse(message);
         
         switch(data.type) {
@@ -31,7 +39,6 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
                             peerId,
                             roomId: data.roomId
                         }));
-                        roomInstance.notifyNewPeerOfExistingProducers(peerId, ws);
                     }
                 } catch (error) {
                     console.error("Error joining room:", error);

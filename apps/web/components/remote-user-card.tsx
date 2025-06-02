@@ -5,7 +5,6 @@ import React, { useEffect, useMemo, useRef } from 'react'
 
 const RemoteUserCard = React.memo(({ user, speakingUsers }: { user: RemoteUser, speakingUsers: string[] }) => {
     const {remoteUsers} = useUIStore()
-    console.log(user,speakingUsers,'speakingusersss')
     const videoRef = useRef<HTMLVideoElement>(null);
     const audioRef = useRef<HTMLAudioElement>(null);
     const screenRef = useRef<HTMLVideoElement>(null);
@@ -50,7 +49,6 @@ const RemoteUserCard = React.memo(({ user, speakingUsers }: { user: RemoteUser, 
 
         setupMedia();
     }, [user.stream, user.audioConsumer, user.screenStream]);
-    console.log(remoteUsers,'remottteeeeeeeeeeeeeee')
     if (user.screenEnabled && user.screenStream) {
         return (
             <div className="col-span-full lg:col-span-3">

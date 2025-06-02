@@ -42,7 +42,6 @@ export default function VideoCall() {
   const [isInCall, setIsInCall] = useState(false);
   const [participantCount, setParticipantCount] = useState(0);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
-  // const [speakingUsers, setSpeakingUsers] = useState<string[]>([])
 
   useEffect(() => {
     connectWebSocket();
@@ -60,7 +59,6 @@ export default function VideoCall() {
 
   const handleWebSocketMessage = async (event: any) => {
     const data = JSON.parse(event.data);
-    console.log("Received message:", data);
 
     switch (data.type) {
       case EventTypes.WELCOME:
@@ -115,11 +113,9 @@ export default function VideoCall() {
           mediaSoupClientState.current.screenStream.getTracks().forEach(track => track.stop());
           mediaSoupClientState.current.screenStream = null;
         }
-
         // Find and close screen producer
         const screenProducer = Array.from(mediaSoupClientState.current.producers.values())
           .find(producer => producer.appData?.type === 'screen');
-
         if (screenProducer) {
           screenProducer.close();
           mediaSoupClientState.current.producers.delete(screenProducer.id);
@@ -128,7 +124,8 @@ export default function VideoCall() {
           wsRef.current?.send(JSON.stringify({
             type: EventTypes.PRODUCER_CLOSED,
             producerId: screenProducer.id,
-            kind: "screen"
+            kind: "screen",
+            roomId: "123"
           }));
         }
         setIsScreenSharing(false);
@@ -154,6 +151,7 @@ export default function VideoCall() {
         });
       }
     } else {
+      
       console.log('Starting screen sharing...');
       // Start screen sharing
       try {
@@ -224,6 +222,10 @@ export default function VideoCall() {
     ws.onopen = () => {
       console.log("WebSocket connected");
       setStatus("Connected");
+      ws.send(JSON.stringify({
+        type: EventTypes.JOIN_ROOM,
+        roomId: "123"
+      }))
     };
 
     ws.onmessage = handleWebSocketMessage;
@@ -242,7 +244,8 @@ export default function VideoCall() {
   const initializeDevice = async () => {
     if (!wsRef || !wsRef.current) return;
     wsRef.current.send(JSON.stringify({
-      type: EventTypes.GET_ROUTER_RTP_CAPABILITIES
+      type: EventTypes.GET_ROUTER_RTP_CAPABILITIES,
+      roomId: "123"
     }));
   };
 
@@ -284,11 +287,13 @@ export default function VideoCall() {
       if (!wsRef || !wsRef.current) return;
       wsRef.current.send(JSON.stringify({
         type: EventTypes.CREATE_WEBRTC_TRANSPORT,
-        direction: "send"
+        direction: "send",
+        roomId: "123"
       }));
       wsRef.current.send(JSON.stringify({
         type: EventTypes.CREATE_WEBRTC_TRANSPORT,
-        direction: "recv"
+        direction: "recv",
+        roomId: "123"
       }));
     } catch (error) {
       console.error("Error starting call:", error);
@@ -410,7 +415,8 @@ export default function VideoCall() {
             type: EventTypes.CONNECT_PRODUCER_TRANSPORT,
             direction: "send",
             transportId: transport.id,
-            dtlsParameters
+            dtlsParameters,
+            roomId: "123"
           }));
           callback();
         } catch (error: any) {
@@ -433,7 +439,8 @@ export default function VideoCall() {
             type: EventTypes.PRODUCE,
             kind,
             rtpParameters,
-            appData
+            appData,
+            roomId: "123"
           }));
         } catch (error: any) {
           errback(error);
@@ -489,6 +496,7 @@ export default function VideoCall() {
         kind,
         appData,
         rtpCapabilities: mediaSoupClientState.current?.device?.rtpCapabilities,
+        roomId: "123"
       }));
     } catch (error) {
       console.error("Error handling new producer:", error);
@@ -518,7 +526,8 @@ export default function VideoCall() {
             type: EventTypes.CONNECT_CONSUMER_TRANSPORT,
             direction: "recv",
             dtlsParameters,
-            transportId: transport.id
+            transportId: transport.id,
+            roomId: "123"
           }));
           callback();
         } catch (error: any) {
@@ -593,7 +602,8 @@ export default function VideoCall() {
         JSON.stringify({
           type: EventTypes.RESUME_CONSUMER,
           consumerId: consumer.id,
-          peerId: data.producerPeerId
+          peerId: data.producerPeerId,
+          roomId: "123"
         })
       );
       consumer.on("trackended", () => {
@@ -622,14 +632,12 @@ export default function VideoCall() {
   };
   const handleSpeakerUsers = (data: any) => {
     const { speakingUsers: currentSpeakingUsers }: { speakingUsers: Array<string> } = data;
-    console.log(currentSpeakingUsers, 'curren')
     setSpeakingUsers(currentSpeakingUsers)
 
   }
   useEffect(() => {
     setParticipantCount(remoteUsers.size);
   }, [remoteUsers]);
-  console.log(remoteUsers, remoteUsers.size, "remote users state");
 
   const getGridClass = () => {
     const userCount = remoteUsers.size;
@@ -644,9 +652,6 @@ export default function VideoCall() {
     return "grid-cols-2 md:grid-cols-3 lg:grid-cols-4";
   };
 
-  console.log("Remote users:", remoteUsers);
-  console.log("Participant count:", participantCount);
-  console.log(speakingUsers, mediaSoupClientState.current.peerId, 'remotee current user')
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white relative overflow-hidden">
       {/* Animated background */}

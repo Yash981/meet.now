@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "tsx ./src/server.ts",
-    "dev": "tsx watch ./src/server.ts",
+    "start": "tsx ./src/signalling-server.ts",
+    "dev": "tsx watch ./src/signalling-server.ts",
     "build": "tsc -b"
   },
   "keywords": [],
