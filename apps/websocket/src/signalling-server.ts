@@ -1,7 +1,7 @@
 import { WebSocket, WebSocketServer } from "ws";
 import { roomManager } from "./managers/room-manager";
 import { IncomingMessage } from "http";
-import { EventTypes } from "@repo/types";
+import { EventMessage, EventPayloadMap, EventTypes } from "@repo/types";
 import { generateRandomId } from "./utils";
 import WorkerManager from "./managers/worker-manager";
 import { Room } from "./managers/room";
@@ -24,81 +24,93 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     const peerId = generateRandomId();
     
     ws.on("message", async (message: string) => {
-        const data = JSON.parse(message);
+        const data = JSON.parse(message) as EventMessage;
         
         switch(data.type) {
             case EventTypes.JOIN_ROOM:
                 try {
-                    const room = roomManager.getRoom(data.roomId) || roomManager.createRoom(data.roomId);
-                    roomManager.addUserToRoom(data.roomId, peerId);
-                    const roomInstance = roomManager.getRoom(data.roomId);
+                    const payload = data.message as EventPayloadMap[typeof EventTypes.JOIN_ROOM]
+                    const room = roomManager.getRoom(payload.roomId) || roomManager.createRoom(payload.roomId);
+                    roomManager.addUserToRoom(payload.roomId, peerId);
+                    const roomInstance = roomManager.getRoom(payload.roomId);
                     if (roomInstance) {
                         roomInstance.addPeer(peerId, ws);
                         ws.send(JSON.stringify({
                             type: EventTypes.WELCOME,
-                            peerId,
-                            roomId: data.roomId
+                            message:{
+                                peerId,
+                                roomId: payload.roomId
+                            }
                         }));
                     }
                 } catch (error) {
                     console.error("Error joining room:", error);
                     ws.send(JSON.stringify({
                         type: EventTypes.ERROR,
-                        msg: `Failed to join room: ${(error as Error).message}`
+                        message: {msg:`Failed to join room: ${(error as Error).message}`}
                     }));
                 }
                 break;
 
             case EventTypes.GET_ROUTER_RTP_CAPABILITIES:
-                const room = roomManager.getRoom(data.roomId);
+                const getRouterPayload = data.message as EventPayloadMap[typeof EventTypes.GET_ROUTER_RTP_CAPABILITIES]
+                const room = roomManager.getRoom(getRouterPayload.roomId);
                 if (room) {
                     ws.send(JSON.stringify({
                         type: EventTypes.ROUTER_RTP_CAPABILITIES,
-                        rtpCapabilities: room.getRouterRtpCapabilities()
+                        message: {
+                            rtpCapabilities: room.getRouterRtpCapabilities()
+                        }
                     }));
                 }
                 break;
 
             case EventTypes.CREATE_WEBRTC_TRANSPORT:
-                const transportRoom = roomManager.getRoom(data.roomId);
+                const createWebrtcPayload = data.message as EventPayloadMap[typeof EventTypes.CREATE_WEBRTC_TRANSPORT]
+                const transportRoom = roomManager.getRoom(createWebrtcPayload.roomId);
                 if (transportRoom) {
-                    await transportRoom.createWebRTCTransport(data, ws, peerId);
+                    await transportRoom.createWebRTCTransport(createWebrtcPayload, ws, peerId);
                 }
                 break;
 
             case EventTypes.CONNECT_PRODUCER_TRANSPORT:
             case EventTypes.CONNECT_CONSUMER_TRANSPORT:
-                const connectRoom = roomManager.getRoom(data.roomId);
+                const producerConsumerConnectPayload = data.message as EventPayloadMap[typeof EventTypes.CONNECT_CONSUMER_TRANSPORT]
+                const connectRoom = roomManager.getRoom(producerConsumerConnectPayload.roomId);
                 if (connectRoom) {
-                    await connectRoom.producerAndConsumerConnectTotransport(data, peerId);
+                    await connectRoom.producerAndConsumerConnectTotransport(producerConsumerConnectPayload, peerId);
                 }
                 break;
 
             case EventTypes.PRODUCE:
-                const produceRoom = roomManager.getRoom(data.roomId);
+                const producePayload = data.message as EventPayloadMap[typeof EventTypes.PRODUCE]
+                const produceRoom = roomManager.getRoom(producePayload.roomId);
                 if (produceRoom) {
-                    await produceRoom.handleProduce(data, ws, peerId);
+                    await produceRoom.handleProduce(producePayload, ws, peerId);
                 }
                 break;
 
             case EventTypes.CONSUME:
-                const consumeRoom = roomManager.getRoom(data.roomId);
+                const consumePayload = data.message as EventPayloadMap[typeof EventTypes.CONSUME]
+                const consumeRoom = roomManager.getRoom(consumePayload.roomId);
                 if (consumeRoom) {
-                    await consumeRoom.handleConsume(data, ws, peerId);
+                    await consumeRoom.handleConsume(consumePayload, ws, peerId);
                 }
                 break;
 
             case EventTypes.RESUME_CONSUMER:
-                const resumeRoom = roomManager.getRoom(data.roomId);
+                const resumeConsumerPayload = data.message as EventPayloadMap[typeof EventTypes.RESUME_CONSUMER]
+                const resumeRoom = roomManager.getRoom(resumeConsumerPayload.roomId);
                 if (resumeRoom) {
-                    await resumeRoom.handleResumeConsumer(data, ws, peerId);
+                    await resumeRoom.handleResumeConsumer(resumeConsumerPayload, ws, peerId);
                 }
                 break;
 
             case EventTypes.PRODUCER_CLOSED:
-                const closeRoom = roomManager.getRoom(data.roomId);
+                const producerClosedPayload = data.message as EventPayloadMap[typeof EventTypes.PRODUCER_CLOSED]
+                const closeRoom = roomManager.getRoom(producerClosedPayload.roomId);
                 if (closeRoom) {
-                    await closeRoom.handleProducerClosed(data, ws, peerId);
+                    await closeRoom.handleProducerClosed(producerClosedPayload, ws, peerId);
                 }
                 break;
         }
@@ -113,7 +125,9 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
                 
                 room.broadcast({
                     type: EventTypes.PEER_DISCONNECTED,
-                    peerId
+                    message:{
+                        peerId
+                    }
                 }, peerId);
             }
         }

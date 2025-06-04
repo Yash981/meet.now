@@ -10,7 +10,7 @@ import {
 } from "mediasoup/types";
 import WorkerManager from "./worker-manager";
 import { mediaCodecs } from "../utils";
-import { EventTypes } from "@repo/types";
+import { createMessage, EventMessage, EventPayloadMap, EventTypes } from "@repo/types";
 import { WebSocket } from "ws";
 
 export type Peer = {
@@ -203,21 +203,23 @@ export class Room {
       transport = await this.createTransport(peerId, direction);
     } else if (direction === "recv") {
       transport = await this.createTransport(peerId, direction);
-      setTimeout(()=>{
+      setTimeout(() => {
         this.notifyNewPeerOfExistingProducers(peerId, socket);
-      },100)
+      }, 100);
     } else {
       throw new Error(`Invalid transport direction: ${direction}`);
     }
     socket.send(
       JSON.stringify({
         type: EventTypes.WEBRTC_TRANSPORT_CREATED,
-        direction,
-        transportId: transport.id,
-        iceCandidates: transport.iceCandidates,
-        iceParameters: transport.iceParameters,
-        dtlsParameters: transport.dtlsParameters,
-        userId: peerId,
+        message:{
+          direction,
+          transportId: transport.id,
+          iceCandidates: transport.iceCandidates,
+          iceParameters: transport.iceParameters,
+          dtlsParameters: transport.dtlsParameters,
+          userId: peerId,
+        }
       })
     );
   }
@@ -281,18 +283,22 @@ export class Room {
       socket.send(
         JSON.stringify({
           type: EventTypes.PRODUCED,
-          id: producer.id,
-          kind: producer.kind,
-          rtpParameters: producer.rtpParameters,
+          message:{
+            id: producer.id,
+            kind: producer.kind,
+            rtpParameters: producer.rtpParameters,
+          }
         })
       );
       this.broadcast(
         {
           type: EventTypes.NEW_PRODUCER,
-          producerId: producer.id,
-          kind: producer.kind,
-          peerId,
-          appData: producer.appData,
+          message: {
+            producerId: producer.id,
+            kind: producer.kind,
+            peerId,
+            appData: producer.appData,
+          },
         },
         peerId
       );
@@ -328,7 +334,7 @@ export class Room {
   }
 
   async handleConsume(
-    data: any,
+    data: EventPayloadMap[typeof EventTypes.CONSUME],
     socket: WebSocket,
     peerId: string
   ): Promise<void> {
@@ -373,29 +379,32 @@ export class Room {
         socket.send(
           JSON.stringify({
             type: EventTypes.PRODUCER_CLOSED,
-            producerId: consumer.producerId,
+            message:{
+              producerId: consumer.producerId,
+            }
           })
         );
         consumer.close();
         peer.consumers.delete(consumer.id);
       });
       socket.send(
-        JSON.stringify({
-          type: EventTypes.CONSUMED,
-          consumerId: consumer.id,
-          producerId,
-          kind: consumer.kind,
-          rtpParameters: consumer.rtpParameters,
-          appData: consumer.appData,
-          producerPeerId: producerPeerId,
-        })
-      );
+        JSON.stringify(createMessage(EventTypes.CONSUMED,{
+            consumerId: consumer.id,
+            producerId,
+            kind: consumer.kind,
+            rtpParameters: consumer.rtpParameters,
+            appData: consumer.appData,
+            producerPeerId: producerPeerId,
+          })
+      ))
     } catch (error) {
       console.error("Error consuming:", error);
       socket.send(
         JSON.stringify({
           type: EventTypes.ERROR,
-          msg: `Failed to consume: ${(error as Error).message}`,
+          message:{
+            msg: `Failed to consume: ${(error as Error).message}`,
+          }
         })
       );
       throw new Error("Failed to consume");
@@ -412,10 +421,12 @@ export class Room {
           newPeerWs.send(
             JSON.stringify({
               type: EventTypes.NEW_PRODUCER,
-              producerId: producer.id,
-              kind: producer.kind,
-              peerId: existingPeerId,
-              appData: producer.appData,
+              message:{
+                producerId: producer.id,
+                kind: producer.kind,
+                peerId: existingPeerId,
+                appData: producer.appData,
+              }
             })
           );
         });
@@ -424,7 +435,7 @@ export class Room {
   }
 
   async handleProducerClosed(
-    data: any,
+    data:EventPayloadMap[typeof EventTypes.PRODUCER_CLOSED],
     socket: WebSocket,
     peerId: string
   ): Promise<void> {
@@ -443,10 +454,12 @@ export class Room {
         peer.producers.delete(producerId);
         const notificationMsg = {
           type: EventTypes.PRODUCER_CLOSED_NOTIFICATION,
-          producerId,
-          peerId,
-          kind,
-          appData: producer.appData,
+          message: {
+            producerId,
+            peerId,
+            kind,
+            appData: producer.appData,
+          },
         };
         this.broadcast(notificationMsg, peerId);
       }
@@ -455,7 +468,9 @@ export class Room {
       socket.send(
         JSON.stringify({
           type: EventTypes.ERROR,
-          msg: `Failed to handle producer closed: ${(error as Error).message}`,
+          message:{
+            msg: `Failed to handle producer closed: ${(error as Error).message}`,
+          }
         })
       );
       throw new Error("Failed to handle producer closed");
@@ -481,7 +496,10 @@ export class Room {
       );
       if (!speakingUsers) return;
       this.broadcast(
-        { type: EventTypes.SPEAKING_USERS, speakingUsers: speakingUsers },
+        {
+          type: EventTypes.SPEAKING_USERS,
+          message: { speakingUsers: speakingUsers },
+        },
         ""
       );
     });
@@ -489,14 +507,16 @@ export class Room {
       this.broadcast(
         {
           type: EventTypes.SPEAKING_USERS,
-          speakingUsers: [],
+          message:{
+            speakingUsers: [],
+          }
         },
         ""
       );
     });
   }
   async handleResumeConsumer(
-    data: any,
+    data: EventPayloadMap[typeof EventTypes.RESUME_CONSUMER],
     socket: WebSocket,
     peerId: string
   ): Promise<void> {
@@ -514,15 +534,19 @@ export class Room {
       socket.send(
         JSON.stringify({
           type: EventTypes.RESUME_PAUSED_CONSUMER,
-          consumerId: consumer.id,
-        })
+          message:{
+            consumerId: consumer.id,
+          }
+        } as EventMessage)
       );
     } catch (error) {
       console.error("Error resuming consumer:", error);
       socket.send(
         JSON.stringify({
           type: EventTypes.ERROR,
-          msg: `Failed to resume consumer: ${(error as Error).message}`,
+          message:{
+            msg: `Failed to resume consumer: ${(error as Error).message}`,
+          }
         })
       );
     }

@@ -20,6 +20,7 @@ class WorkerManager {
             return;
         }
         this.worker = await createWorker(workerSettings);
+        console.log(`Worker process ID ${this.worker.pid}`);
         this.worker.on("died", () => {
             console.error("MediaSoup worker has died");
             setTimeout(() => {

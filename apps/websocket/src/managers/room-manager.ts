@@ -54,7 +54,6 @@ class RoomManager {
         if (!roomData) {
             throw new Error(`Room with ID ${roomId} does not exist`);
         }
-        roomData.room.closeRouter();
         this.rooms.delete(roomId);
     }
 

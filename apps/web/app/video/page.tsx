@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Device } from "mediasoup-client";
-import { EventTypes } from "@repo/types";
+import { EventMessage, EventPayloadMap, EventTypes } from "@repo/types";
 import { Consumer, Producer, RtpCapabilities, Transport } from "mediasoup-client/types";
 import { Users, Video, VideoOff, Mic, MicOff, Phone, PhoneOff, Settings, Maximize2, Volume2, MonitorUp, MonitorX } from "lucide-react";
 import Link from "next/link";
@@ -58,49 +58,66 @@ export default function VideoCall() {
   }, []);
 
   const handleWebSocketMessage = async (event: any) => {
-    const data = JSON.parse(event.data);
-
+    const data = JSON.parse(event.data) as EventMessage;
     switch (data.type) {
-      case EventTypes.WELCOME:
-        mediaSoupClientState.current.peerId = data.peerId
+      case EventTypes.WELCOME: {
+        const payload = data.message as EventPayloadMap[typeof EventTypes.WELCOME]
+        mediaSoupClientState.current.peerId = payload.peerId
         setStatus("Connected");
         await initializeDevice();
         break;
+      }
 
-      case EventTypes.ROUTER_RTP_CAPABILITIES:
-        await createDevice(data.rtpCapabilities);
+      case EventTypes.ROUTER_RTP_CAPABILITIES: {
+        const payload = data.message as EventPayloadMap[typeof EventTypes.ROUTER_RTP_CAPABILITIES]
+        await createDevice(payload.rtpCapabilities);
         break;
-
-      case EventTypes.WEBRTC_TRANSPORT_CREATED:
-        if (data.direction === "send") {
-          await setupProducerTransport(data);
+      }
+      case EventTypes.WEBRTC_TRANSPORT_CREATED:{
+        const payload = data.message as EventPayloadMap[typeof EventTypes.WEBRTC_TRANSPORT_CREATED]
+        if (payload.direction === "send") {
+          await setupProducerTransport(payload);
         } else {
-          await setupConsumerTransport(data);
+          await setupConsumerTransport(payload);
         }
         break;
+      }
 
-      case EventTypes.CONSUMED:
-        await handleConsumed(data);
+      case EventTypes.CONSUMED:{
+        const payload = data.message as EventPayloadMap[typeof EventTypes.CONSUMED]
+        console.log(payload,'payload on consumed event')
+        await handleConsumed(payload);
         break;
+      }
 
-      case EventTypes.NEW_PRODUCER:
-        handleNewProducer(data);
+      case EventTypes.NEW_PRODUCER:{
+        const payload = data.message as EventPayloadMap[typeof EventTypes.NEW_PRODUCER]
+        handleNewProducer(payload);
         break;
+      }
 
-      case EventTypes.ERROR:
-        console.log("Server error:", data.msg);
-        setStatus(`Error: ${data.msg}`);
+      case EventTypes.ERROR:{
+        const payload = data.message as EventPayloadMap[typeof EventTypes.ERROR]
+        console.log("Server error:", payload.msg);
+        setStatus(`Error: ${payload.msg}`);
         break;
-      case EventTypes.PEER_DISCONNECTED:
-        console.log("Peer disconnected:", data.peerId);
-        handlePeerDisconnected(data);
+      }
+      case EventTypes.PEER_DISCONNECTED:{
+        const payload = data.message as EventPayloadMap[typeof EventTypes.PEER_DISCONNECTED]
+        console.log("Peer disconnected:", payload.peerId);
+        handlePeerDisconnected(payload);
         break
-      case EventTypes.PRODUCER_CLOSED_NOTIFICATION:
-        handlePrdoucerClosedScreenShareNotification(data);
+      }
+      case EventTypes.PRODUCER_CLOSED_NOTIFICATION:{
+        const payload = data.message as EventPayloadMap[typeof EventTypes.PRODUCER_CLOSED_NOTIFICATION]
+        handlePrdoucerClosedScreenShareNotification(payload);
+        break;
+      }
+      case EventTypes.SPEAKING_USERS:{
+        const payload = data.message as EventPayloadMap[typeof EventTypes.SPEAKING_USERS]
+        handleSpeakerUsers(payload);
         break
-      case EventTypes.SPEAKING_USERS:
-        handleSpeakerUsers(data);
-        break
+      }
 
     }
   };
@@ -123,9 +140,11 @@ export default function VideoCall() {
           // Notify server to remove screen producer
           wsRef.current?.send(JSON.stringify({
             type: EventTypes.PRODUCER_CLOSED,
-            producerId: screenProducer.id,
-            kind: "screen",
-            roomId: "123"
+            message:{
+              producerId: screenProducer.id,
+              kind: "screen",
+              roomId: "123"
+            }
           }));
         }
         setIsScreenSharing(false);
@@ -224,7 +243,9 @@ export default function VideoCall() {
       setStatus("Connected");
       ws.send(JSON.stringify({
         type: EventTypes.JOIN_ROOM,
-        roomId: "123"
+        message:{
+          roomId: "123"
+        }
       }))
     };
 
@@ -245,7 +266,9 @@ export default function VideoCall() {
     if (!wsRef || !wsRef.current) return;
     wsRef.current.send(JSON.stringify({
       type: EventTypes.GET_ROUTER_RTP_CAPABILITIES,
-      roomId: "123"
+      message:{
+        roomId: "123"
+      }
     }));
   };
 
@@ -267,17 +290,48 @@ export default function VideoCall() {
     try {
       setStatus("Starting call...");
       setIsInCall(true);
-
+      const audioContext = new AudioContext()
       const stream = await navigator.mediaDevices.getUserMedia({
         video: isVideoEnabled,
         audio: isAudioEnabled ? {
-          echoCancellation: true,
+          echoCancellation: false,
           noiseSuppression: true,
-          autoGainControl: true
+          autoGainControl: false
         } : false,
-      });
 
-      mediaSoupClientState.current.localStream = stream;
+      });
+      if(isAudioEnabled){
+        let finalStream: MediaStream;
+        const rawAudioTrack = stream.getAudioTracks()[0];
+        if (!rawAudioTrack) {
+          finalStream = stream;
+        } else {
+          const micSourceNode = audioContext.createMediaStreamSource(new MediaStream([rawAudioTrack]));
+          const highpassFilter = audioContext.createBiquadFilter();
+          highpassFilter.type = "highpass";
+          highpassFilter.frequency.value = 300; 
+          const destinationNode = audioContext.createMediaStreamDestination();
+          micSourceNode.connect(highpassFilter);
+          highpassFilter.connect(destinationNode);
+          finalStream = new MediaStream();
+          const filteredAudioTrack = destinationNode.stream.getAudioTracks()[0];
+          if (filteredAudioTrack) {
+            finalStream.addTrack(filteredAudioTrack);
+          }
+
+          if (isVideoEnabled) {
+            const rawVideoTrack = stream.getVideoTracks()[0];
+            if (rawVideoTrack) {
+              finalStream.addTrack(rawVideoTrack);
+            }
+          }
+        }
+
+        mediaSoupClientState.current.localStream = finalStream;
+
+      } else{
+        mediaSoupClientState.current.localStream = stream;
+      }
       const localVideoEl = document.getElementById("local-video") as HTMLVideoElement;
       if (localVideoEl) {
         localVideoEl.srcObject = stream;
@@ -287,13 +341,17 @@ export default function VideoCall() {
       if (!wsRef || !wsRef.current) return;
       wsRef.current.send(JSON.stringify({
         type: EventTypes.CREATE_WEBRTC_TRANSPORT,
-        direction: "send",
-        roomId: "123"
+        message:{
+          direction: "send",
+          roomId: "123"
+        }
       }));
       wsRef.current.send(JSON.stringify({
         type: EventTypes.CREATE_WEBRTC_TRANSPORT,
-        direction: "recv",
-        roomId: "123"
+        message:{
+          direction: "recv",
+          roomId: "123"
+        }
       }));
     } catch (error) {
       console.error("Error starting call:", error);
@@ -413,10 +471,12 @@ export default function VideoCall() {
         try {
           wsRef?.current?.send(JSON.stringify({
             type: EventTypes.CONNECT_PRODUCER_TRANSPORT,
-            direction: "send",
-            transportId: transport.id,
-            dtlsParameters,
-            roomId: "123"
+            message:{
+              direction: "send",
+              transportId: transport.id,
+              dtlsParameters,
+              roomId: "123"
+            }
           }));
           callback();
         } catch (error: any) {
@@ -427,9 +487,10 @@ export default function VideoCall() {
       transport.on("produce", async ({ kind, rtpParameters, appData }, callback, errback) => {
         try {
           const handleProduced = (event: MessageEvent) => {
-            const data = JSON.parse(event.data);
+            const data = JSON.parse(event.data) as EventMessage;
             if (data.type === EventTypes.PRODUCED) {
-              callback({ id: data.id });
+              const payload = data.message as EventPayloadMap[typeof EventTypes.PRODUCED]
+              callback({ id: payload.id  });
               wsRef.current?.removeEventListener("message", handleProduced);
             }
           };
@@ -437,10 +498,12 @@ export default function VideoCall() {
           if (!wsRef || !wsRef.current) return;
           wsRef.current.send(JSON.stringify({
             type: EventTypes.PRODUCE,
-            kind,
-            rtpParameters,
-            appData,
-            roomId: "123"
+            message:{
+              kind,
+              rtpParameters,
+              appData,
+              roomId: "123"
+            }
           }));
         } catch (error: any) {
           errback(error);
@@ -491,12 +554,14 @@ export default function VideoCall() {
       const { producerId, kind, peerId, appData } = data;
       wsRef.current?.send(JSON.stringify({
         type: EventTypes.CONSUME,
-        producerId,
-        peerId,
-        kind,
-        appData,
-        rtpCapabilities: mediaSoupClientState.current?.device?.rtpCapabilities,
-        roomId: "123"
+        message:{
+          producerId,
+          peerId,
+          kind,
+          appData,
+          rtpCapabilities: mediaSoupClientState.current?.device?.rtpCapabilities,
+          roomId: "123"
+        }
       }));
     } catch (error) {
       console.error("Error handling new producer:", error);
@@ -524,10 +589,12 @@ export default function VideoCall() {
           if (!wsRef || !wsRef.current) return;
           wsRef.current.send(JSON.stringify({
             type: EventTypes.CONNECT_CONSUMER_TRANSPORT,
-            direction: "recv",
-            dtlsParameters,
-            transportId: transport.id,
-            roomId: "123"
+            message:{
+              direction: "recv",
+              dtlsParameters,
+              transportId: transport.id,
+              roomId: "123"
+            }
           }));
           callback();
         } catch (error: any) {
@@ -543,7 +610,7 @@ export default function VideoCall() {
     }
   };
 
-  const handleConsumed = async (data: any) => {
+  const handleConsumed = async (data: EventPayloadMap[typeof EventTypes.CONSUMED]) => {
     try {
       const consumer = await mediaSoupClientState.current.recvTransport?.consume({
         id: data.consumerId,
@@ -601,9 +668,11 @@ export default function VideoCall() {
       wsRef.current?.send(
         JSON.stringify({
           type: EventTypes.RESUME_CONSUMER,
-          consumerId: consumer.id,
-          peerId: data.producerPeerId,
-          roomId: "123"
+          message:{
+            consumerId: consumer.id,
+            peerId: data.producerPeerId,
+            roomId: "123"
+          }
         })
       );
       consumer.on("trackended", () => {

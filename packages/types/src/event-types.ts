@@ -46,7 +46,7 @@ export interface EventPayloadMap {
     appData: AppData;
     roomId: string;
   };
-  [EventTypes.WELCOME]: { peerId: string };
+  [EventTypes.WELCOME]: { peerId: string,roomId:string };
   [EventTypes.ROUTER_RTP_CAPABILITIES]: { rtpCapabilities: any };
   [EventTypes.WEBRTC_TRANSPORT_CREATED]: {
     direction: "send" | "recv";
@@ -71,7 +71,7 @@ export interface EventPayloadMap {
     peerId: string;
     appData: AppData;
   };
-  [EventTypes.ERROR]: { message: string };
+  [EventTypes.ERROR]: { msg: string };
   [EventTypes.PRODUCER_CLOSED]: {
     producerId: string;
     kind: "audio" | "video";
@@ -104,5 +104,13 @@ export interface EventPayloadMap {
 
 export type EventMessage<T extends EventTypes = EventTypes> = {
     type: T;
-    data: EventPayloadMap[T];
+    message: EventPayloadMap[T];
 };
+
+
+export function createMessage<T extends EventTypes>(
+  type: T,
+  message: EventPayloadMap[T]
+): EventMessage<T> {
+  return { type, message };
+}
