@@ -116,12 +116,13 @@ export class Room {
         peer.transports.recvTransport = transport;
       }
       transport.on("dtlsstatechange", (dtlsState: string) => {
-        if (dtlsState === "closed") {
+        if (dtlsState === "closed"  && !transport.closed) {
           transport.close();
         }
       });
       transport.on("@close", () => {
         console.log("Transport closed");
+
       });
       return transport;
     } catch (error) {
@@ -271,7 +272,7 @@ export class Room {
       }
       producer.on("transportclose", () => {
         console.log("Producer transport closed");
-        if (this.audioLevelObserver) {
+        if (this.audioLevelObserver && !producer.closed) {
           try {
             this.audioLevelObserver.removeProducer({ producerId: producer.id });
           } catch (err) {
@@ -494,6 +495,7 @@ export class Room {
       const speakingUsers = volumes.map(
         ({ producer }) => producer.appData.userId
       );
+      console.log(volumes,'volumes')
       if (!speakingUsers) return;
       this.broadcast(
         {
@@ -550,5 +552,16 @@ export class Room {
         })
       );
     }
+  }
+  handleLocalUserVideoOff(data:EventPayloadMap[typeof EventTypes.LOCAL_USER_VIDEO_AUDIO_OFF],ws:WebSocket,peerId:string){
+    const message = {
+      roomId:data.roomId,
+      peerId:data.peerId,
+      type:data.type
+    }
+    this.broadcast({
+      type:EventTypes.REMOTE_USER_VIDEO_AUDIO_OFF,
+      message:message
+    },peerId)
   }
 }

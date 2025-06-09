@@ -4,7 +4,6 @@ import { IncomingMessage } from "http";
 import { EventMessage, EventPayloadMap, EventTypes } from "@repo/types";
 import { generateRandomId } from "./utils";
 import WorkerManager from "./managers/worker-manager";
-import { Room } from "./managers/room";
 
 const wss = new WebSocketServer({ port: 8080 });
 
@@ -14,9 +13,6 @@ wss.on("listening", () => {
 async function init() {
     const workerMngr = WorkerManager.getInstance();
     await workerMngr.init();
-    console.log(workerMngr.getWorker(),'workerMngr')
-    const roomm = new Room()
-    console.log(roomm.getRouter())
 }
 init();
 wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
@@ -113,6 +109,12 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
                     await closeRoom.handleProducerClosed(producerClosedPayload, ws, peerId);
                 }
                 break;
+            case EventTypes.LOCAL_USER_VIDEO_AUDIO_OFF:
+                const localUserVideoOff = data.message as EventPayloadMap[typeof EventTypes.LOCAL_USER_VIDEO_AUDIO_OFF]
+                const userRoom = roomManager.getRoom(localUserVideoOff.roomId);
+                if(userRoom){
+                    userRoom.handleLocalUserVideoOff(localUserVideoOff,ws,peerId)
+                }
         }
     });
     

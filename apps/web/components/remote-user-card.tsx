@@ -48,7 +48,7 @@ const RemoteUserCard = React.memo(({ user, speakingUsers }: { user: RemoteUser, 
         };
 
         setupMedia();
-    }, [user.stream, user.audioConsumer, user.screenStream]);
+    }, [user.stream, user.audioConsumer, user.screenStream,user.videoEnabled]);
     if (user.screenEnabled && user.screenStream) {
         return (
             <div className="col-span-full lg:col-span-3">
@@ -72,7 +72,7 @@ const RemoteUserCard = React.memo(({ user, speakingUsers }: { user: RemoteUser, 
                         </div>
 
                         {/* Small video overlay */}
-                        <div className="absolute bottom-4 right-4 w-32 h-24 rounded-lg overflow-hidden bg-slate-800 border border-slate-600">
+                        {/* <div className="absolute bottom-4 right-4 w-32 h-24 rounded-lg overflow-hidden bg-slate-800 border border-slate-600">
                             {user.videoEnabled && user.stream ? (
                                 <video
                                     ref={videoRef}
@@ -91,7 +91,7 @@ const RemoteUserCard = React.memo(({ user, speakingUsers }: { user: RemoteUser, 
                                     </div>
                                 </div>
                             )}
-                        </div>
+                        </div> */}
                     </div>
                     <audio ref={audioRef} autoPlay className="hidden" />
                 </div>
@@ -105,24 +105,6 @@ const RemoteUserCard = React.memo(({ user, speakingUsers }: { user: RemoteUser, 
           ? "border-green-500 ring-2 ring-green-300/70 animate-blink"
           : "border-transparent"
           }`}>
-          {/* {user.videoEnabled && user.stream ? (
-            <video
-              ref={videoRef}
-              className="w-full h-full object-cover"
-              autoPlay
-              playsInline
-              id={`remote-video-${user.id}`}
-              key={`video-${user.id}`}
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-700 to-slate-800">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                <span className="text-white text-xl font-bold">
-                  {user.id?.charAt(0) || "U"}
-                </span>
-              </div>
-            </div>
-          )} */}
           {videoElement}
           {/* User controls overlay */}
           <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">

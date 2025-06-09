@@ -1,13 +1,15 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Device } from "mediasoup-client";
 import { EventMessage, EventPayloadMap, EventTypes } from "@repo/types";
 import { Consumer, Producer, RtpCapabilities, Transport } from "mediasoup-client/types";
-import { Users, Video, VideoOff, Mic, MicOff, Phone, PhoneOff, Settings, Maximize2, Volume2, MonitorUp, MonitorX } from "lucide-react";
-import Link from "next/link";
 import { toast } from "sonner"
 import { RemoteUser, useUIStore } from "@/store";
-import RemoteUserCard from "@/components/remote-user-card";
+import { Header } from "@/components/video-call/header";
+import { Background } from "@/components/video-call/background";
+import { PreCallScreen } from "@/components/video-call/pre-call-screen";
+import { VideoGrid } from "@/components/video-call/video-grid";
+import { CallControls } from "@/components/video-call/call-controls";
 
 type PeerClientState = {
   peerId: string;
@@ -73,7 +75,7 @@ export default function VideoCall() {
         await createDevice(payload.rtpCapabilities);
         break;
       }
-      case EventTypes.WEBRTC_TRANSPORT_CREATED:{
+      case EventTypes.WEBRTC_TRANSPORT_CREATED: {
         const payload = data.message as EventPayloadMap[typeof EventTypes.WEBRTC_TRANSPORT_CREATED]
         if (payload.direction === "send") {
           await setupProducerTransport(payload);
@@ -83,39 +85,44 @@ export default function VideoCall() {
         break;
       }
 
-      case EventTypes.CONSUMED:{
+      case EventTypes.CONSUMED: {
         const payload = data.message as EventPayloadMap[typeof EventTypes.CONSUMED]
-        console.log(payload,'payload on consumed event')
+        console.log(payload, 'payload on consumed event')
         await handleConsumed(payload);
         break;
       }
 
-      case EventTypes.NEW_PRODUCER:{
+      case EventTypes.NEW_PRODUCER: {
         const payload = data.message as EventPayloadMap[typeof EventTypes.NEW_PRODUCER]
         handleNewProducer(payload);
         break;
       }
 
-      case EventTypes.ERROR:{
+      case EventTypes.ERROR: {
         const payload = data.message as EventPayloadMap[typeof EventTypes.ERROR]
         console.log("Server error:", payload.msg);
         setStatus(`Error: ${payload.msg}`);
         break;
       }
-      case EventTypes.PEER_DISCONNECTED:{
+      case EventTypes.PEER_DISCONNECTED: {
         const payload = data.message as EventPayloadMap[typeof EventTypes.PEER_DISCONNECTED]
         console.log("Peer disconnected:", payload.peerId);
         handlePeerDisconnected(payload);
         break
       }
-      case EventTypes.PRODUCER_CLOSED_NOTIFICATION:{
+      case EventTypes.PRODUCER_CLOSED_NOTIFICATION: {
         const payload = data.message as EventPayloadMap[typeof EventTypes.PRODUCER_CLOSED_NOTIFICATION]
         handlePrdoucerClosedScreenShareNotification(payload);
         break;
       }
-      case EventTypes.SPEAKING_USERS:{
+      case EventTypes.SPEAKING_USERS: {
         const payload = data.message as EventPayloadMap[typeof EventTypes.SPEAKING_USERS]
-        handleSpeakerUsers(payload);
+        handleSpeakingUsers(payload);
+        break
+      }
+      case EventTypes.REMOTE_USER_VIDEO_AUDIO_OFF:{
+        const payload = data.message as EventPayloadMap[typeof EventTypes.REMOTE_USER_VIDEO_AUDIO_OFF]
+        handleRemoteUserVideoOff(payload)
         break
       }
 
@@ -140,7 +147,7 @@ export default function VideoCall() {
           // Notify server to remove screen producer
           wsRef.current?.send(JSON.stringify({
             type: EventTypes.PRODUCER_CLOSED,
-            message:{
+            message: {
               producerId: screenProducer.id,
               kind: "screen",
               roomId: "123"
@@ -170,7 +177,7 @@ export default function VideoCall() {
         });
       }
     } else {
-      
+
       console.log('Starting screen sharing...');
       // Start screen sharing
       try {
@@ -219,17 +226,30 @@ export default function VideoCall() {
           })
         }
       } catch (error) {
-        console.error("Error starting screen share:", error);
-        setIsScreenSharing(false);
-        toast.error("Failed to start screen sharing", {
-          duration: 3000,
-          position: "top-center",
-          style: {
-            backgroundColor: "#ffffff",
-            color: "#000000",
-          }
-        });
+        if (error instanceof DOMException && error.name === "NotAllowedError") {
+          setIsScreenSharing(false);
+          toast.error("Screen sharing was cancelled.", {
+            duration: 3000,
+            position: "top-center",
+            style: {
+              backgroundColor: "#ffffff",
+              color: "#000000",
+            }
+          });
+        } else {
+          console.error("Error starting screen share:", error);
+          toast.error("Failed to start screen sharing", {
+            duration: 3000,
+            position: "top-center",
+            style: {
+              backgroundColor: "#ffffff",
+              color: "#000000",
+            }
+          });
+        }
+
       }
+
     }
 
   }
@@ -243,7 +263,7 @@ export default function VideoCall() {
       setStatus("Connected");
       ws.send(JSON.stringify({
         type: EventTypes.JOIN_ROOM,
-        message:{
+        message: {
           roomId: "123"
         }
       }))
@@ -266,7 +286,7 @@ export default function VideoCall() {
     if (!wsRef || !wsRef.current) return;
     wsRef.current.send(JSON.stringify({
       type: EventTypes.GET_ROUTER_RTP_CAPABILITIES,
-      message:{
+      message: {
         roomId: "123"
       }
     }));
@@ -293,45 +313,46 @@ export default function VideoCall() {
       const audioContext = new AudioContext()
       const stream = await navigator.mediaDevices.getUserMedia({
         video: isVideoEnabled,
-        audio: isAudioEnabled ? {
-          echoCancellation: false,
-          noiseSuppression: true,
-          autoGainControl: false
-        } : false,
+        audio: isAudioEnabled
+        // ? {
+        //   echoCancellation: false,
+        //   noiseSuppression: true,
+        //   autoGainControl: false
+        // } : false,
 
       });
-      if(isAudioEnabled){
-        let finalStream: MediaStream;
-        const rawAudioTrack = stream.getAudioTracks()[0];
-        if (!rawAudioTrack) {
-          finalStream = stream;
-        } else {
-          const micSourceNode = audioContext.createMediaStreamSource(new MediaStream([rawAudioTrack]));
-          const highpassFilter = audioContext.createBiquadFilter();
-          highpassFilter.type = "highpass";
-          highpassFilter.frequency.value = 300; 
-          const destinationNode = audioContext.createMediaStreamDestination();
-          micSourceNode.connect(highpassFilter);
-          highpassFilter.connect(destinationNode);
-          finalStream = new MediaStream();
-          const filteredAudioTrack = destinationNode.stream.getAudioTracks()[0];
-          if (filteredAudioTrack) {
-            finalStream.addTrack(filteredAudioTrack);
-          }
+      // if(isAudioEnabled){
+      //   let finalStream: MediaStream;
+      //   const rawAudioTrack = stream.getAudioTracks()[0];
+      //   if (!rawAudioTrack) {
+      //     finalStream = stream;
+      //   } else {
+      //     const micSourceNode = audioContext.createMediaStreamSource(new MediaStream([rawAudioTrack]));
+      //     const highpassFilter = audioContext.createBiquadFilter();
+      //     highpassFilter.type = "highpass";
+      //     highpassFilter.frequency.value = 300; 
+      //     const destinationNode = audioContext.createMediaStreamDestination();
+      //     micSourceNode.connect(highpassFilter);
+      //     highpassFilter.connect(destinationNode);
+      //     finalStream = new MediaStream();
+      //     const filteredAudioTrack = destinationNode.stream.getAudioTracks()[0];
+      //     if (filteredAudioTrack) {
+      //       finalStream.addTrack(filteredAudioTrack);
+      //     }
 
-          if (isVideoEnabled) {
-            const rawVideoTrack = stream.getVideoTracks()[0];
-            if (rawVideoTrack) {
-              finalStream.addTrack(rawVideoTrack);
-            }
-          }
-        }
+      //     if (isVideoEnabled) {
+      //       const rawVideoTrack = stream.getVideoTracks()[0];
+      //       if (rawVideoTrack) {
+      //         finalStream.addTrack(rawVideoTrack);
+      //       }
+      //     }
+      //   }
 
-        mediaSoupClientState.current.localStream = finalStream;
+      //   mediaSoupClientState.current.localStream = finalStream;
 
-      } else{
-        mediaSoupClientState.current.localStream = stream;
-      }
+      // } else{
+      mediaSoupClientState.current.localStream = stream;
+      // }
       const localVideoEl = document.getElementById("local-video") as HTMLVideoElement;
       if (localVideoEl) {
         localVideoEl.srcObject = stream;
@@ -341,14 +362,14 @@ export default function VideoCall() {
       if (!wsRef || !wsRef.current) return;
       wsRef.current.send(JSON.stringify({
         type: EventTypes.CREATE_WEBRTC_TRANSPORT,
-        message:{
+        message: {
           direction: "send",
           roomId: "123"
         }
       }));
       wsRef.current.send(JSON.stringify({
         type: EventTypes.CREATE_WEBRTC_TRANSPORT,
-        message:{
+        message: {
           direction: "recv",
           roomId: "123"
         }
@@ -362,7 +383,7 @@ export default function VideoCall() {
 
   const endCall = () => {
     setIsInCall(false);
-    setStatus("Call ended");
+    setStatus("Ready");
     setRemoteUsers(new Map());
     setParticipantCount(0);
 
@@ -387,7 +408,18 @@ export default function VideoCall() {
       if (videoTrack) {
         videoTrack.enabled = !isVideoEnabled;
         setIsVideoEnabled(!isVideoEnabled);
+        
+        
       }
+      wsRef?.current?.send(JSON.stringify({
+        type: EventTypes.LOCAL_USER_VIDEO_AUDIO_OFF,
+        message:{
+          peerId:mediaSoupClientState.current.peerId,
+          roomId:"123",
+          type:"video"
+        }
+
+      } as EventMessage))
     }
   };
 
@@ -398,8 +430,36 @@ export default function VideoCall() {
         audioTrack.enabled = !isAudioEnabled;
         setIsAudioEnabled(!isAudioEnabled);
       }
+      wsRef?.current?.send(JSON.stringify({
+        type: EventTypes.LOCAL_USER_VIDEO_AUDIO_OFF,
+        message:{
+          peerId:mediaSoupClientState.current.peerId,
+          roomId:"123",
+          type:"audio"
+        }
+
+      } as EventMessage))
     }
   };
+  const handleRemoteUserVideoOff = (data:EventPayloadMap[typeof EventTypes.REMOTE_USER_VIDEO_AUDIO_OFF]) => {
+    const {peerId:remotePeerId,type} = data
+    useUIStore.getState().setRemoteUsers((prev: Map<string, RemoteUser>)=>{
+      const newUsers = new Map(prev);
+      const existingUser = newUsers.get(remotePeerId)
+      console.log(existingUser)
+      if(existingUser){
+        if(type==="video") {
+          existingUser.videoEnabled = !existingUser.videoEnabled
+        }
+        if(type==="audio") {
+          existingUser.audioEnabled = !existingUser.audioEnabled
+        }
+        newUsers.set(remotePeerId,existingUser)
+      }
+      return newUsers
+    })
+    console.log('done')
+  }
   const handlePrdoucerClosedScreenShareNotification = (data: any) => {
     const { peerId, producerId, kind, appData } = data;
     toast.info(`Peer ${peerId} stopped screen sharing`, {
@@ -411,7 +471,7 @@ export default function VideoCall() {
       }
 
     });
-    useUIStore.getState().setRemoteUsers((prev)=>{
+    useUIStore.getState().setRemoteUsers((prev) => {
       const newUsers = new Map(prev);
       const existingUser = newUsers.get(peerId);
       if (existingUser) {
@@ -443,7 +503,7 @@ export default function VideoCall() {
       }
 
     });
-    useUIStore.getState().setRemoteUsers((prev)=>{
+    useUIStore.getState().setRemoteUsers((prev) => {
       const newUsers = new Map(prev);
       newUsers.delete(peerId);
       return newUsers
@@ -471,7 +531,7 @@ export default function VideoCall() {
         try {
           wsRef?.current?.send(JSON.stringify({
             type: EventTypes.CONNECT_PRODUCER_TRANSPORT,
-            message:{
+            message: {
               direction: "send",
               transportId: transport.id,
               dtlsParameters,
@@ -490,7 +550,7 @@ export default function VideoCall() {
             const data = JSON.parse(event.data) as EventMessage;
             if (data.type === EventTypes.PRODUCED) {
               const payload = data.message as EventPayloadMap[typeof EventTypes.PRODUCED]
-              callback({ id: payload.id  });
+              callback({ id: payload.id });
               wsRef.current?.removeEventListener("message", handleProduced);
             }
           };
@@ -498,7 +558,7 @@ export default function VideoCall() {
           if (!wsRef || !wsRef.current) return;
           wsRef.current.send(JSON.stringify({
             type: EventTypes.PRODUCE,
-            message:{
+            message: {
               kind,
               rtpParameters,
               appData,
@@ -554,7 +614,7 @@ export default function VideoCall() {
       const { producerId, kind, peerId, appData } = data;
       wsRef.current?.send(JSON.stringify({
         type: EventTypes.CONSUME,
-        message:{
+        message: {
           producerId,
           peerId,
           kind,
@@ -589,7 +649,7 @@ export default function VideoCall() {
           if (!wsRef || !wsRef.current) return;
           wsRef.current.send(JSON.stringify({
             type: EventTypes.CONNECT_CONSUMER_TRANSPORT,
-            message:{
+            message: {
               direction: "recv",
               dtlsParameters,
               transportId: transport.id,
@@ -626,7 +686,7 @@ export default function VideoCall() {
       const userId = data.producerPeerId;
       const isScreenShare = data.appData?.type === "screen";
 
-      useUIStore.getState().setRemoteUsers((prev:Map<string, RemoteUser>) => {
+      useUIStore.getState().setRemoteUsers((prev: Map<string, RemoteUser>) => {
         const newUsers = new Map(prev);
         const existingUser = newUsers.get(userId) || {
           id: userId,
@@ -668,7 +728,7 @@ export default function VideoCall() {
       wsRef.current?.send(
         JSON.stringify({
           type: EventTypes.RESUME_CONSUMER,
-          message:{
+          message: {
             consumerId: consumer.id,
             peerId: data.producerPeerId,
             roomId: "123"
@@ -676,7 +736,7 @@ export default function VideoCall() {
         })
       );
       consumer.on("trackended", () => {
-        useUIStore.getState().setRemoteUsers((prev)=>{
+        useUIStore.getState().setRemoteUsers((prev) => {
           const newUsers = new Map(prev);
           const user = newUsers.get(userId);
           if (user) {
@@ -699,7 +759,7 @@ export default function VideoCall() {
       console.error(`Error handling consumed ${data.kind}:`, error);
     }
   };
-  const handleSpeakerUsers = (data: any) => {
+  const handleSpeakingUsers = (data: any) => {
     const { speakingUsers: currentSpeakingUsers }: { speakingUsers: Array<string> } = data;
     setSpeakingUsers(currentSpeakingUsers)
 
@@ -708,228 +768,41 @@ export default function VideoCall() {
     setParticipantCount(remoteUsers.size);
   }, [remoteUsers]);
 
-  const getGridClass = () => {
-    const userCount = remoteUsers.size;
-    const hasScreenShare = Array.from(remoteUsers.values()).some(user => user.screenEnabled);
-    if (hasScreenShare) {
-      return "grid-cols-1 lg:grid-cols-4";
-    }
-    if (userCount === 0) return "grid-cols-1";
-    if (userCount === 1) return "grid-cols-1 md:grid-cols-2";
-    if (userCount <= 4) return "grid-cols-2";
-    if (userCount <= 6) return "grid-cols-2 md:grid-cols-3";
-    return "grid-cols-2 md:grid-cols-3 lg:grid-cols-4";
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white relative overflow-hidden">
-      {/* Animated background */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500/20 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl animate-pulse"></div>
-      </div>
-
+      <Background />
       <div className="relative z-10 p-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center space-x-4">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
-              <Video className="text-white" size={24} />
-            </div>
-            <div>
-              <Link href="/" className="text-2xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
-                Meet Now
-              </Link>
-              <div className="flex items-center space-x-4 text-sm text-gray-400">
-                <span className="flex items-center space-x-1">
-                  <div className={`w-2 h-2 rounded-full ${status === 'Connected' || status === 'Ready' || status === 'In call' ? 'bg-green-400' : 'bg-red-400'}`}></div>
-                  <span>{status}</span>
-                </span>
-                {isInCall && (
-                  <span className="flex items-center space-x-1">
-                    <Users size={14} />
-                    <span>{participantCount + 1} participants</span>
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {isInCall && (
-            <div className="flex items-center space-x-2">
-              <button className="p-2 rounded-xl bg-slate-700/50 hover:bg-slate-600/50 transition-all">
-                <Settings size={20} />
-              </button>
-              <button className="p-2 rounded-xl bg-slate-700/50 hover:bg-slate-600/50 transition-all">
-                <Maximize2 size={20} />
-              </button>
-            </div>
-          )}
-        </div>
+        <Header
+          status={status}
+          isInCall={isInCall}
+          participantCount={participantCount}
+        />
 
         {!isInCall ? (
-          // Pre-call screen
-          <div className="flex flex-col items-center justify-center min-h-[60vh]">
-            <div className="text-center mb-8">
-              <h2 className="text-4xl font-bold mb-4 bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-                Ready to Connect?
-              </h2>
-              <p className="text-gray-400 text-lg">
-                Join the conversation with crystal clear video and audio
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl mb-8">
-              {/* Local preview */}
-              <div className="relative">
-                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 aspect-video shadow-2xl border border-slate-700/50">
-                  <video
-                    id="local-video"
-                    className="w-full h-full object-cover"
-                    autoPlay
-                    muted
-                    playsInline
-                  />
-                  <div className="absolute bottom-4 left-4">
-                    <span className="text-white text-sm font-medium bg-black/40 backdrop-blur-sm px-3 py-1 rounded-lg">
-                      You
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Feature highlights */}
-              <div className="flex flex-col justify-center space-y-6">
-                <div className="flex items-center space-x-4">
-                  <div className="w-12 h-12 rounded-xl bg-green-500/20 flex items-center justify-center">
-                    <Video className="text-green-400" size={24} />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-lg">HD Video Quality</h3>
-                    <p className="text-gray-400">Crystal clear video with adaptive bitrate</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-4">
-                  <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center">
-                    <Users className="text-blue-400" size={24} />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-lg">Multiple Participants</h3>
-                    <p className="text-gray-400">Connect with multiple people simultaneously</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-4">
-                  <div className="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center">
-                    <Volume2 className="text-purple-400" size={24} />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-lg">Clear Audio</h3>
-                    <p className="text-gray-400">Noise cancellation and echo reduction</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <button
-              onClick={startCall}
-              disabled={status !== 'Ready' && status !== 'Connected'}
-              className="group relative px-8 py-4 bg-gradient-to-r from-purple-600 to-blue-600 rounded-2xl font-semibold text-lg shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-            >
-              <div className="flex items-center space-x-3">
-                <Phone size={24} />
-                <span>Start Call</span>
-              </div>
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-600/50 to-blue-600/50 opacity-0 group-hover:opacity-100 transition-opacity blur-xl"></div>
-            </button>
-            {status !== 'Ready' && status !== "Connected" && <p className="text-white">Please refresh the page </p>}
-          </div>
+          <PreCallScreen
+            status={status}
+            onStartCall={startCall}
+          />
         ) : (
-          // In-call screen
           <div className="space-y-6">
-            {/* Video grid */}
-            <div className={`grid ${getGridClass()} gap-4`}>
-              {/* Local video (smaller when others are present) */}
-              <div className={`relative ${remoteUsers.size > 0 ? 'order-last' : ''}`}>
-                <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 aspect-video shadow-2xl border-4 ${speakingUsers?.length > 0 &&
-                  speakingUsers?.includes(mediaSoupClientState.current.peerId)
-                  ? "border-green-500 ring-2 ring-green-300/70 animate-blink"
-                  : "border-transparent"
-                  }`}>
-                  <video
-                    id="local-video"
-                    className={`w-full h-full object-cover `}
-                    autoPlay
-                    muted
-                    playsInline
+            <VideoGrid
+              remoteUsers={remoteUsers}
+              speakingUsers={speakingUsers}
+              localPeerId={mediaSoupClientState.current.peerId}
+              isAudioEnabled={isAudioEnabled}
+              isVideoEnabled={isVideoEnabled}
+              videoStream = {mediaSoupClientState.current.localStream}
+            />
 
-                  />
-                  <div className="absolute bottom-3 left-3">
-                    <span className="text-white text-sm font-medium bg-black/40 backdrop-blur-sm px-2 py-1 rounded-lg">
-                      You
-                    </span>
-                  </div>
-                  <div className="absolute bottom-3 right-3 flex items-center space-x-1">
-                    {!isAudioEnabled && (
-                      <div className="w-6 h-6 rounded-full bg-red-500/80 flex items-center justify-center">
-                        <MicOff size={12} className="text-white" />
-                      </div>
-                    )}
-                    {!isVideoEnabled && (
-                      <div className="w-6 h-6 rounded-full bg-red-500/80 flex items-center justify-center">
-                        <VideoOff size={12} className="text-white" />
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-              </div>
-
-              {/* Remote users */}
-              {Array.from(remoteUsers.values()).map((user) => {
-                if (!user.stream) return null;
-                return (
-                  <RemoteUserCard key={user.id} user={user} speakingUsers={speakingUsers} />
-
-                )
-              })}
-            </div>
-
-            {/* Controls */}
-            <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2">
-              <div className="flex items-center space-x-4 bg-slate-800/80 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-slate-700/50">
-                <button
-                  onClick={toggleAudio}
-                  className={`p-3 rounded-xl transition-all ${isAudioEnabled
-                    ? 'bg-slate-700 hover:bg-slate-600 text-white'
-                    : 'bg-red-500 hover:bg-red-600 text-white'
-                    }`}
-                >
-                  {isAudioEnabled ? <Mic size={20} /> : <MicOff size={20} />}
-                </button>
-
-                <button
-                  onClick={toggleVideo}
-                  className={`p-3 rounded-xl transition-all ${isVideoEnabled
-                    ? 'bg-slate-700 hover:bg-slate-600 text-white'
-                    : 'bg-red-500 hover:bg-red-600 text-white'
-                    }`}
-                >
-                  {isVideoEnabled ? <Video size={20} /> : <VideoOff size={20} />}
-                </button>
-                <button onClick={() => toggleScreenShare()} className={`p-3 rounded-xl ${!isScreenSharing
-                  ? 'bg-slate-700 hover:bg-slate-600 text-white'
-                  : 'bg-red-500 hover:bg-red-600 text-white'
-                  } transition-all`}>
-                  {isScreenSharing ? <MonitorX size={20} /> : <MonitorUp size={20} />}
-                </button>
-                <button
-                  onClick={endCall}
-                  className="p-3 rounded-xl bg-red-500 hover:bg-red-600 text-white transition-all"
-                >
-                  <PhoneOff size={20} />
-                </button>
-              </div>
-            </div>
+            <CallControls
+              isAudioEnabled={isAudioEnabled}
+              isVideoEnabled={isVideoEnabled}
+              isScreenSharing={isScreenSharing}
+              onToggleAudio={toggleAudio}
+              onToggleVideo={toggleVideo}
+              onToggleScreenShare={toggleScreenShare}
+              onEndCall={endCall}
+            />
           </div>
         )}
       </div>
