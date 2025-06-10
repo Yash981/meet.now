@@ -10,7 +10,7 @@ export const useWebSocket = ({ onMessage, onStatusChange }: UseWebSocketProps) =
   const wsRef = useRef<WebSocket | null>(null);
 
   const connect = useCallback(() => {
-    const ws = new WebSocket("ws://localhost:8080");
+    const ws = new WebSocket(process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080");
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -25,8 +25,12 @@ export const useWebSocket = ({ onMessage, onStatusChange }: UseWebSocketProps) =
     };
 
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data) as EventMessage;
-      onMessage(data);
+      try {
+        const data = JSON.parse(event.data) as EventMessage;
+        onMessage(data);
+      } catch (error) {
+        console.error("Failed to parse WebSocket message:", error);
+      }
     };
 
     ws.onclose = () => {

@@ -38,6 +38,9 @@ importers:
       '@repo/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@repo/utils':
+        specifier: workspace:*
+        version: link:../../packages/common-utilities
       '@tailwindcss/postcss':
         specifier: ^4.1.7
         version: 4.1.7
@@ -130,12 +133,17 @@ importers:
       '@repo/typescript-config':
         specifier: workspace:*
         version: link:../../packages/typescript-config
+      '@repo/utils':
+        specifier: workspace:*
+        version: link:../../packages/common-utilities
       '@types/node':
         specifier: ^22.15.3
         version: 22.15.3
       tsx:
         specifier: ^4.19.4
         version: 4.19.4
+
+  packages/common-utilities: {}
 
   packages/eslint-config:
     devDependencies:

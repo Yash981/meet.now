@@ -1,8 +1,9 @@
-import { WebSocket, WebSocketServer } from "ws";
+import { RawData, WebSocket, WebSocketServer } from "ws";
 import { roomManager } from "./managers/room-manager";
 import { IncomingMessage } from "http";
 import { EventMessage, EventPayloadMap, EventTypes } from "@repo/types";
-import { generateRandomId } from "./utils";
+import {  generateRandomId } from "./utils";
+import {encodeBinaryMessage,decodeBinaryMessage} from "@repo/utils"
 import WorkerManager from "./managers/worker-manager";
 
 const wss = new WebSocketServer({ port: 8080 });
@@ -19,8 +20,9 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     console.log("New client connected");
     const peerId = generateRandomId();
     
-    ws.on("message", async (message: string) => {
-        const data = JSON.parse(message) as EventMessage;
+    ws.on("message", async (message:RawData) => {
+        const decoded = decodeBinaryMessage(message)
+        const data = JSON.parse(decoded) as EventMessage;
         
         switch(data.type) {
             case EventTypes.JOIN_ROOM:
@@ -31,20 +33,20 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
                     const roomInstance = roomManager.getRoom(payload.roomId);
                     if (roomInstance) {
                         roomInstance.addPeer(peerId, ws);
-                        ws.send(JSON.stringify({
+                        ws.send(encodeBinaryMessage(JSON.stringify({
                             type: EventTypes.WELCOME,
                             message:{
                                 peerId,
                                 roomId: payload.roomId
                             }
-                        }));
+                        })));
                     }
                 } catch (error) {
                     console.error("Error joining room:", error);
-                    ws.send(JSON.stringify({
+                    ws.send(encodeBinaryMessage(JSON.stringify({
                         type: EventTypes.ERROR,
                         message: {msg:`Failed to join room: ${(error as Error).message}`}
-                    }));
+                    })));
                 }
                 break;
 
@@ -52,12 +54,12 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
                 const getRouterPayload = data.message as EventPayloadMap[typeof EventTypes.GET_ROUTER_RTP_CAPABILITIES]
                 const room = roomManager.getRoom(getRouterPayload.roomId);
                 if (room) {
-                    ws.send(JSON.stringify({
+                    ws.send(encodeBinaryMessage(JSON.stringify({
                         type: EventTypes.ROUTER_RTP_CAPABILITIES,
                         message: {
                             rtpCapabilities: room.getRouterRtpCapabilities()
                         }
-                    }));
+                    })));
                 }
                 break;
 
@@ -109,8 +111,8 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
                     await closeRoom.handleProducerClosed(producerClosedPayload, ws, peerId);
                 }
                 break;
-            case EventTypes.LOCAL_USER_VIDEO_AUDIO_OFF:
-                const localUserVideoOff = data.message as EventPayloadMap[typeof EventTypes.LOCAL_USER_VIDEO_AUDIO_OFF]
+            case EventTypes.LOCAL_USER_MEDIA_TOGGLED:
+                const localUserVideoOff = data.message as EventPayloadMap[typeof EventTypes.LOCAL_USER_MEDIA_TOGGLED]
                 const userRoom = roomManager.getRoom(localUserVideoOff.roomId);
                 if(userRoom){
                     userRoom.handleLocalUserVideoOff(localUserVideoOff,ws,peerId)

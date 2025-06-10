@@ -6,13 +6,13 @@ interface LocalVideoProps {
   isVideoEnabled: boolean;
   isSpeaking: boolean;
   orderLast?: boolean;
-  videoStream:any
+  videoStream: MediaStream | null
 }
 
 export const LocalVideo = memo(({ isAudioEnabled, isVideoEnabled, isSpeaking, orderLast,videoStream }: LocalVideoProps) => {
   useEffect(()=>{
     const localVideoEl = document.getElementById("local-video") as HTMLVideoElement;
-      if (localVideoEl && isVideoEnabled) {
+      if (localVideoEl && isVideoEnabled && videoStream) {
         localVideoEl.srcObject = videoStream;
       }
   },[isVideoEnabled])

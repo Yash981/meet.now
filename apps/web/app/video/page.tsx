@@ -7,9 +7,10 @@ import { toast } from "sonner"
 import { RemoteUser, useUIStore } from "@/store";
 import { Header } from "@/components/video-call/header";
 import { Background } from "@/components/video-call/background";
-import { PreCallScreen } from "@/components/video-call/pre-call-screen";
+import {  PreCallScreen } from "@/components/video-call/pre-call-screen";
 import { VideoGrid } from "@/components/video-call/video-grid";
 import { CallControls } from "@/components/video-call/call-controls";
+import {decodeBinaryMessage,encodeBinaryMessage} from "@repo/utils"
 
 type PeerClientState = {
   peerId: string;
@@ -50,7 +51,7 @@ export default function VideoCall() {
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
-        remoteUsers.forEach((user) => {
+        useUIStore.getState().remoteUsers.forEach((user) => {
           user.stream?.getTracks().forEach((track) => track.stop());
           user.screenStream?.getTracks().forEach((track) => track.stop());
         });
@@ -60,7 +61,8 @@ export default function VideoCall() {
   }, []);
 
   const handleWebSocketMessage = async (event: any) => {
-    const data = JSON.parse(event.data) as EventMessage;
+    const decodedData = decodeBinaryMessage(event.data)
+    const data = JSON.parse(decodedData) as EventMessage;
     switch (data.type) {
       case EventTypes.WELCOME: {
         const payload = data.message as EventPayloadMap[typeof EventTypes.WELCOME]
@@ -120,8 +122,8 @@ export default function VideoCall() {
         handleSpeakingUsers(payload);
         break
       }
-      case EventTypes.REMOTE_USER_VIDEO_AUDIO_OFF:{
-        const payload = data.message as EventPayloadMap[typeof EventTypes.REMOTE_USER_VIDEO_AUDIO_OFF]
+      case EventTypes.REMOTE_USER_MEDIA_TOGGLED:{
+        const payload = data.message as EventPayloadMap[typeof EventTypes.REMOTE_USER_MEDIA_TOGGLED]
         handleRemoteUserVideoOff(payload)
         break
       }
@@ -145,14 +147,14 @@ export default function VideoCall() {
           mediaSoupClientState.current.producers.delete(screenProducer.id);
 
           // Notify server to remove screen producer
-          wsRef.current?.send(JSON.stringify({
+          wsRef.current?.send(encodeBinaryMessage(JSON.stringify({
             type: EventTypes.PRODUCER_CLOSED,
             message: {
               producerId: screenProducer.id,
               kind: "screen",
               roomId: "123"
             }
-          }));
+          })));
         }
         setIsScreenSharing(false);
         setStatus("In call");
@@ -256,17 +258,18 @@ export default function VideoCall() {
 
   const connectWebSocket = () => {
     const ws = new WebSocket("ws://localhost:8080");
+    ws.binaryType = "arraybuffer";
     wsRef.current = ws;
 
     ws.onopen = () => {
       console.log("WebSocket connected");
       setStatus("Connected");
-      ws.send(JSON.stringify({
+      ws.send(encodeBinaryMessage(JSON.stringify({
         type: EventTypes.JOIN_ROOM,
         message: {
           roomId: "123"
         }
-      }))
+      })))
     };
 
     ws.onmessage = handleWebSocketMessage;
@@ -284,12 +287,12 @@ export default function VideoCall() {
 
   const initializeDevice = async () => {
     if (!wsRef || !wsRef.current) return;
-    wsRef.current.send(JSON.stringify({
+    wsRef.current.send(encodeBinaryMessage(JSON.stringify({
       type: EventTypes.GET_ROUTER_RTP_CAPABILITIES,
       message: {
         roomId: "123"
       }
-    }));
+    })));
   };
 
   const createDevice = async (rtpCapabilities: RtpCapabilities) => {
@@ -360,23 +363,30 @@ export default function VideoCall() {
       }
 
       if (!wsRef || !wsRef.current) return;
-      wsRef.current.send(JSON.stringify({
+      wsRef.current.send(encodeBinaryMessage(JSON.stringify({
         type: EventTypes.CREATE_WEBRTC_TRANSPORT,
         message: {
           direction: "send",
           roomId: "123"
         }
-      }));
-      wsRef.current.send(JSON.stringify({
+      })));
+      wsRef.current.send(encodeBinaryMessage(JSON.stringify({
         type: EventTypes.CREATE_WEBRTC_TRANSPORT,
         message: {
           direction: "recv",
           roomId: "123"
         }
-      }));
-    } catch (error) {
-      console.error("Error starting call:", error);
-      setStatus("Error accessing camera");
+      })));
+    } catch (error:any) {
+      if (error.name === 'NotAllowedError') {
+        setStatus('Camera access was denied. Please allow permission to continue.');
+      } else if (error.name === 'NotFoundError') {
+        setStatus('No camera device found.');
+      } else if (error.name === 'NotReadableError') {
+        setStatus('Camera is already in use by another application.');
+      } else {
+        setStatus('An unexpected error occurred: ' + error.message);
+      }    
       setIsInCall(false);
     }
   };
@@ -411,15 +421,16 @@ export default function VideoCall() {
         
         
       }
-      wsRef?.current?.send(JSON.stringify({
-        type: EventTypes.LOCAL_USER_VIDEO_AUDIO_OFF,
+      wsRef?.current?.send(encodeBinaryMessage(JSON.stringify({
+        type: EventTypes.LOCAL_USER_MEDIA_TOGGLED,
         message:{
           peerId:mediaSoupClientState.current.peerId,
           roomId:"123",
-          type:"video"
+          type:"video",
+          enable:!isVideoEnabled
         }
 
-      } as EventMessage))
+      } as EventMessage)))
     }
   };
 
@@ -430,29 +441,30 @@ export default function VideoCall() {
         audioTrack.enabled = !isAudioEnabled;
         setIsAudioEnabled(!isAudioEnabled);
       }
-      wsRef?.current?.send(JSON.stringify({
-        type: EventTypes.LOCAL_USER_VIDEO_AUDIO_OFF,
+      wsRef?.current?.send(encodeBinaryMessage(JSON.stringify({
+        type: EventTypes.LOCAL_USER_MEDIA_TOGGLED,
         message:{
           peerId:mediaSoupClientState.current.peerId,
           roomId:"123",
-          type:"audio"
+          type:"audio",
+          enable: !isAudioEnabled
         }
 
-      } as EventMessage))
+      } as EventMessage)))
     }
   };
-  const handleRemoteUserVideoOff = (data:EventPayloadMap[typeof EventTypes.REMOTE_USER_VIDEO_AUDIO_OFF]) => {
-    const {peerId:remotePeerId,type} = data
+  const handleRemoteUserVideoOff = (data:EventPayloadMap[typeof EventTypes.REMOTE_USER_MEDIA_TOGGLED]) => {
+    const {peerId:remotePeerId,type,enable} = data
     useUIStore.getState().setRemoteUsers((prev: Map<string, RemoteUser>)=>{
       const newUsers = new Map(prev);
       const existingUser = newUsers.get(remotePeerId)
       console.log(existingUser)
       if(existingUser){
         if(type==="video") {
-          existingUser.videoEnabled = !existingUser.videoEnabled
+          existingUser.videoEnabled = enable
         }
         if(type==="audio") {
-          existingUser.audioEnabled = !existingUser.audioEnabled
+          existingUser.audioEnabled = enable
         }
         newUsers.set(remotePeerId,existingUser)
       }
@@ -529,7 +541,7 @@ export default function VideoCall() {
 
       transport?.on("connect", async ({ dtlsParameters }, callback, errback) => {
         try {
-          wsRef?.current?.send(JSON.stringify({
+          wsRef?.current?.send(encodeBinaryMessage(JSON.stringify({
             type: EventTypes.CONNECT_PRODUCER_TRANSPORT,
             message: {
               direction: "send",
@@ -537,7 +549,7 @@ export default function VideoCall() {
               dtlsParameters,
               roomId: "123"
             }
-          }));
+          })));
           callback();
         } catch (error: any) {
           errback(error);
@@ -547,7 +559,8 @@ export default function VideoCall() {
       transport.on("produce", async ({ kind, rtpParameters, appData }, callback, errback) => {
         try {
           const handleProduced = (event: MessageEvent) => {
-            const data = JSON.parse(event.data) as EventMessage;
+            const decoded = decodeBinaryMessage(event.data)
+            const data = JSON.parse(decoded) as EventMessage;
             if (data.type === EventTypes.PRODUCED) {
               const payload = data.message as EventPayloadMap[typeof EventTypes.PRODUCED]
               callback({ id: payload.id });
@@ -556,7 +569,7 @@ export default function VideoCall() {
           };
           wsRef.current?.addEventListener("message", handleProduced);
           if (!wsRef || !wsRef.current) return;
-          wsRef.current.send(JSON.stringify({
+          wsRef.current.send(encodeBinaryMessage(JSON.stringify({
             type: EventTypes.PRODUCE,
             message: {
               kind,
@@ -564,7 +577,7 @@ export default function VideoCall() {
               appData,
               roomId: "123"
             }
-          }));
+          })));
         } catch (error: any) {
           errback(error);
         }
@@ -612,7 +625,7 @@ export default function VideoCall() {
   const handleNewProducer = async (data: any) => {
     try {
       const { producerId, kind, peerId, appData } = data;
-      wsRef.current?.send(JSON.stringify({
+      wsRef.current?.send(encodeBinaryMessage(JSON.stringify({
         type: EventTypes.CONSUME,
         message: {
           producerId,
@@ -622,7 +635,7 @@ export default function VideoCall() {
           rtpCapabilities: mediaSoupClientState.current?.device?.rtpCapabilities,
           roomId: "123"
         }
-      }));
+      })));
     } catch (error) {
       console.error("Error handling new producer:", error);
     }
@@ -647,7 +660,7 @@ export default function VideoCall() {
       transport.on("connect", async ({ dtlsParameters }, callback, errback) => {
         try {
           if (!wsRef || !wsRef.current) return;
-          wsRef.current.send(JSON.stringify({
+          wsRef.current.send(encodeBinaryMessage(JSON.stringify({
             type: EventTypes.CONNECT_CONSUMER_TRANSPORT,
             message: {
               direction: "recv",
@@ -655,7 +668,7 @@ export default function VideoCall() {
               transportId: transport.id,
               roomId: "123"
             }
-          }));
+          })));
           callback();
         } catch (error: any) {
           errback(error);
@@ -726,14 +739,14 @@ export default function VideoCall() {
 
 
       wsRef.current?.send(
-        JSON.stringify({
+        encodeBinaryMessage(JSON.stringify({
           type: EventTypes.RESUME_CONSUMER,
           message: {
             consumerId: consumer.id,
             peerId: data.producerPeerId,
             roomId: "123"
           }
-        })
+        }))
       );
       consumer.on("trackended", () => {
         useUIStore.getState().setRemoteUsers((prev) => {

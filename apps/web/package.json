@@ -30,7 +30,8 @@
     "sonner": "^2.0.3",
     "tailwind-merge": "^3.3.0",
     "tailwindcss": "^4.1.7",
-    "zustand": "^5.0.5"
+    "zustand": "^5.0.5",
+    "@repo/utils":"workspace:*"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",

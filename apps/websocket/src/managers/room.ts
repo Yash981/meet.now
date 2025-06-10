@@ -9,7 +9,8 @@ import {
   WebRtcTransport,
 } from "mediasoup/types";
 import WorkerManager from "./worker-manager";
-import { mediaCodecs } from "../utils";
+import {  mediaCodecs } from "../utils";
+import {encodeBinaryMessage} from  "@repo/utils"
 import { createMessage, EventMessage, EventPayloadMap, EventTypes } from "@repo/types";
 import { WebSocket } from "ws";
 
@@ -83,7 +84,7 @@ export class Room {
         otherPeer.ws.readyState === WebSocket.OPEN
       ) {
         try {
-          otherPeer.ws.send(JSON.stringify(message));
+          otherPeer.ws.send(encodeBinaryMessage(JSON.stringify(message)));
         } catch (error) {
           console.error(`Error sending message to peer ${otherPeerId}:`, error);
         }
@@ -210,7 +211,7 @@ export class Room {
     } else {
       throw new Error(`Invalid transport direction: ${direction}`);
     }
-    socket.send(
+    socket.send(encodeBinaryMessage(
       JSON.stringify({
         type: EventTypes.WEBRTC_TRANSPORT_CREATED,
         message:{
@@ -222,7 +223,7 @@ export class Room {
           userId: peerId,
         }
       })
-    );
+    ));
   }
 
   async producerAndConsumerConnectTotransport(
@@ -281,7 +282,7 @@ export class Room {
         }
         producer.close();
       });
-      socket.send(
+      socket.send(encodeBinaryMessage(
         JSON.stringify({
           type: EventTypes.PRODUCED,
           message:{
@@ -290,7 +291,7 @@ export class Room {
             rtpParameters: producer.rtpParameters,
           }
         })
-      );
+      ));
       this.broadcast(
         {
           type: EventTypes.NEW_PRODUCER,
@@ -377,18 +378,18 @@ export class Room {
       consumer.on("producerclose", () => {
         console.log(`Producer closed for consumer ${consumer.id}`);
         peer.consumers.delete(consumer.id);
-        socket.send(
+        socket.send(encodeBinaryMessage(
           JSON.stringify({
             type: EventTypes.PRODUCER_CLOSED,
             message:{
               producerId: consumer.producerId,
             }
-          })
+          }))
         );
         consumer.close();
         peer.consumers.delete(consumer.id);
       });
-      socket.send(
+      socket.send(encodeBinaryMessage(
         JSON.stringify(createMessage(EventTypes.CONSUMED,{
             consumerId: consumer.id,
             producerId,
@@ -397,17 +398,17 @@ export class Room {
             appData: consumer.appData,
             producerPeerId: producerPeerId,
           })
-      ))
+      )))
     } catch (error) {
       console.error("Error consuming:", error);
-      socket.send(
+      socket.send(encodeBinaryMessage(
         JSON.stringify({
           type: EventTypes.ERROR,
           message:{
             msg: `Failed to consume: ${(error as Error).message}`,
           }
         })
-      );
+      ));
       throw new Error("Failed to consume");
     }
   }
@@ -419,7 +420,7 @@ export class Room {
     for (const [existingPeerId, existingPeer] of this.peers.entries()) {
       if (existingPeerId !== newPeerId) {
         existingPeer.producers.forEach((producer, producerId) => {
-          newPeerWs.send(
+          newPeerWs.send(encodeBinaryMessage(
             JSON.stringify({
               type: EventTypes.NEW_PRODUCER,
               message:{
@@ -428,7 +429,7 @@ export class Room {
                 peerId: existingPeerId,
                 appData: producer.appData,
               }
-            })
+            }))
           );
         });
       }
@@ -466,13 +467,13 @@ export class Room {
       }
     } catch (error) {
       console.error("Error handling producer closed:", error);
-      socket.send(
+      socket.send(encodeBinaryMessage(
         JSON.stringify({
           type: EventTypes.ERROR,
           message:{
             msg: `Failed to handle producer closed: ${(error as Error).message}`,
           }
-        })
+        }))
       );
       throw new Error("Failed to handle producer closed");
     }
@@ -495,7 +496,6 @@ export class Room {
       const speakingUsers = volumes.map(
         ({ producer }) => producer.appData.userId
       );
-      console.log(volumes,'volumes')
       if (!speakingUsers) return;
       this.broadcast(
         {
@@ -533,35 +533,30 @@ export class Room {
     }
     try {
       await consumer.resume();
-      socket.send(
+      socket.send(encodeBinaryMessage(
         JSON.stringify({
           type: EventTypes.RESUME_PAUSED_CONSUMER,
           message:{
             consumerId: consumer.id,
           }
-        } as EventMessage)
+        } as EventMessage))
       );
     } catch (error) {
       console.error("Error resuming consumer:", error);
-      socket.send(
+      socket.send(encodeBinaryMessage(
         JSON.stringify({
           type: EventTypes.ERROR,
           message:{
             msg: `Failed to resume consumer: ${(error as Error).message}`,
           }
-        })
+        }))
       );
     }
   }
-  handleLocalUserVideoOff(data:EventPayloadMap[typeof EventTypes.LOCAL_USER_VIDEO_AUDIO_OFF],ws:WebSocket,peerId:string){
-    const message = {
-      roomId:data.roomId,
-      peerId:data.peerId,
-      type:data.type
-    }
+  handleLocalUserVideoOff(data:EventPayloadMap[typeof EventTypes.LOCAL_USER_MEDIA_TOGGLED],ws:WebSocket,peerId:string){
     this.broadcast({
-      type:EventTypes.REMOTE_USER_VIDEO_AUDIO_OFF,
-      message:message
+      type:EventTypes.REMOTE_USER_MEDIA_TOGGLED,
+      message:data
     },peerId)
   }
 }

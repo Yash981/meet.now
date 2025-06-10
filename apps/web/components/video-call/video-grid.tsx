@@ -8,7 +8,7 @@ interface VideoGridProps {
   localPeerId: string;
   isAudioEnabled: boolean;
   isVideoEnabled: boolean;
-  videoStream:any;
+  videoStream: MediaStream | null;
 }
 
 export const VideoGrid = ({

@@ -111,8 +111,7 @@ export default function Dashboard() {
           </Link>
 
           <Link href="/meeting/schedule">
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2
-             hover:border-2 border-dashed hover:border-dashed hover:border-blue-400">
+            <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 hover:border-2 border-dashed hover:border-dashed hover:border-blue-400">
               <CardContent className="p-6 text-center">
                 <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Calendar className="w-6 h-6 text-blue-600" />

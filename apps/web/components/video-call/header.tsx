@@ -34,10 +34,10 @@ export const Header = ({ status, isInCall, participantCount }: HeaderProps) => (
 
     {isInCall && (
       <div className="flex items-center space-x-2">
-        <button className="p-2 rounded-xl bg-slate-700/50 hover:bg-slate-600/50 transition-all">
+        <button className="p-2 rounded-xl bg-slate-700/50 hover:bg-slate-600/50 transition-all" aria-label="Open settings">
           <Settings size={20} />
         </button>
-        <button className="p-2 rounded-xl bg-slate-700/50 hover:bg-slate-600/50 transition-all">
+        <button className="p-2 rounded-xl bg-slate-700/50 hover:bg-slate-600/50 transition-all" aria-label="Maximize window">
           <Maximize2 size={20} />
         </button>
       </div>

@@ -19,8 +19,8 @@ export enum EventTypes {
   PRODUCER_CLOSED_NOTIFICATION = "PRODUCER_CLOSED_NOTIFICATION",
   SPEAKING_USERS = "SPEAKING_USERS",
   JOIN_ROOM = "JOIN_ROOM",
-  LOCAL_USER_VIDEO_AUDIO_OFF="LOCAL_USER_VIDEO_AUDIO_OFF",
-  REMOTE_USER_VIDEO_AUDIO_OFF="REMOTE_USER_VIDEO_AUDIO_OFF",
+  LOCAL_USER_MEDIA_TOGGLED="LOCAL_USER_MEDIA_TOGGLED",
+  REMOTE_USER_MEDIA_TOGGLED="REMOTE_USER_MEDIA_TOGGLED",
 }
 
 export interface AppData {
@@ -102,8 +102,8 @@ export interface EventPayloadMap {
   };
   [EventTypes.SPEAKING_USERS]: { speakingUsers: string[] };
   [EventTypes.JOIN_ROOM]: { roomId: string };
-  [EventTypes.LOCAL_USER_VIDEO_AUDIO_OFF]: {roomId:string,peerId:string,type:"audio"|"video"};
-  [EventTypes.REMOTE_USER_VIDEO_AUDIO_OFF]:{roomId:string,peerId:string,type:"audio"|"video"};
+  [EventTypes.LOCAL_USER_MEDIA_TOGGLED]: {roomId:string,peerId:string,type:"audio"|"video",enable:boolean};
+  [EventTypes.REMOTE_USER_MEDIA_TOGGLED]:{roomId:string,peerId:string,type:"audio"|"video",enable:boolean};
 }
 
 export type EventMessage<T extends EventTypes = EventTypes> = {
