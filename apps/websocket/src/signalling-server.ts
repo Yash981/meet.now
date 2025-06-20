@@ -20,7 +20,7 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     console.log("New client connected");
     const peerId = generateRandomId();
     
-    ws.on("message", async (message:RawData) => {
+    ws.on("message", async (message:Buffer | ArrayBuffer) => {
         const decoded = decodeBinaryMessage(message)
         const data = JSON.parse(decoded) as EventMessage;
         

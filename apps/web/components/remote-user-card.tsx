@@ -1,10 +1,9 @@
 "use client"
-import { RemoteUser, useUIStore } from '@/store'
+import { RemoteUser } from '@/store'
 import { MicOff, MonitorUp, VideoOff } from 'lucide-react';
 import React, { useEffect, useMemo, useRef } from 'react'
 
 const RemoteUserCard = React.memo(({ user, speakingUsers }: { user: RemoteUser, speakingUsers: string[] }) => {
-    const {remoteUsers} = useUIStore()
     const videoRef = useRef<HTMLVideoElement>(null);
     const audioRef = useRef<HTMLAudioElement>(null);
     const screenRef = useRef<HTMLVideoElement>(null);
