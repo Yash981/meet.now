@@ -28,7 +28,7 @@ export interface AppData {
   userId?: string;
   [key: string]: any;
 }
-
+export type KindType = "audio" | "video" | "screen"
 export interface EventPayloadMap {
   [EventTypes.GET_ROUTER_RTP_CAPABILITIES]: { roomId: string };
   [EventTypes.CREATE_WEBRTC_TRANSPORT]: {
@@ -37,7 +37,7 @@ export interface EventPayloadMap {
   };
   [EventTypes.PRODUCE]: {
     rtpParameters: any;
-    kind: "audio" | "video";
+    kind: KindType;
     appData: AppData;
     roomId: string;
   };
@@ -47,6 +47,7 @@ export interface EventPayloadMap {
     peerId: string;
     appData: AppData;
     roomId: string;
+    kind:KindType
   };
   [EventTypes.WELCOME]: { peerId: string,roomId:string };
   [EventTypes.ROUTER_RTP_CAPABILITIES]: { rtpCapabilities: any };
@@ -58,25 +59,25 @@ export interface EventPayloadMap {
     iceCandidates: any;
     userId: string;
   };
-  [EventTypes.PRODUCED]: { id: string; kind: "audio" | "video"; rtpParameters: any };
+  [EventTypes.PRODUCED]: { id: string; kind: KindType; rtpParameters: any };
   [EventTypes.CONSUMED]: {
     consumerId: string;
     producerId: string;
-    kind: "audio" | "video";
+    kind?: Omit<KindType,"screen">;
     rtpParameters: any;
     producerPeerId: string;
     appData: AppData;
   };
   [EventTypes.NEW_PRODUCER]: {
     producerId: string;
-    kind: "audio" | "video";
+    kind: KindType;
     peerId: string;
     appData: AppData;
   };
   [EventTypes.ERROR]: { msg: string };
   [EventTypes.PRODUCER_CLOSED]: {
     producerId: string;
-    kind: "audio" | "video";
+    kind: KindType;
     roomId: string;
   };
   [EventTypes.RESUME_PAUSED_CONSUMER]: { consumerId: string };
@@ -97,13 +98,13 @@ export interface EventPayloadMap {
   [EventTypes.PRODUCER_CLOSED_NOTIFICATION]: {
     producerId: string;
     peerId: string;
-    kind: "audio" | "video";
+    kind: KindType;
     appData: AppData;
   };
   [EventTypes.SPEAKING_USERS]: { speakingUsers: string[] };
   [EventTypes.JOIN_ROOM]: { roomId: string };
-  [EventTypes.LOCAL_USER_MEDIA_TOGGLED]: {roomId:string,peerId:string,type:"audio"|"video",enable:boolean};
-  [EventTypes.REMOTE_USER_MEDIA_TOGGLED]:{roomId:string,peerId:string,type:"audio"|"video",enable:boolean};
+  [EventTypes.LOCAL_USER_MEDIA_TOGGLED]: {roomId:string,peerId:string,type: Omit<KindType,"screen">,enable:boolean};
+  [EventTypes.REMOTE_USER_MEDIA_TOGGLED]:{roomId:string,peerId:string,type: Omit<KindType,"screen">,enable:boolean};
 }
 
 export type EventMessage<T extends EventTypes = EventTypes> = {
