@@ -11,8 +11,9 @@ import {  PreCallScreen } from "@/components/video-call/pre-call-screen";
 import { VideoGrid } from "@/components/video-call/video-grid";
 import { CallControls } from "@/components/video-call/call-controls";
 import {decodeBinaryMessage,encodeBinaryMessage} from "@repo/utils"
+import { abortMultipartUpload, completeMultipartUpload, getPresignedUrl, startMultipartUpload } from "@/lib/utils";
 
-type PeerClientState = {
+export type PeerClientState = {
   peerId: string;
   device: Device | null;
   sendTransport: Transport | null;
@@ -37,7 +38,7 @@ export default function VideoCall() {
     rtpCapabilities: null,
     screenStream: null,
   });
-
+  
   const wsRef = useRef<WebSocket>(null);
   const [status, setStatus] = useState("Disconnected");
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
@@ -45,7 +46,163 @@ export default function VideoCall() {
   const [isInCall, setIsInCall] = useState(false);
   const [participantCount, setParticipantCount] = useState(0);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  
+  // --- Recording State ---
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingStatus, setRecordingStatus] = useState<string>("");
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const uploadSessionRef = useRef<{ uploadId: string; key: string; parts: { PartNumber: number; ETag: string }[] }>({ uploadId: '', key: '', parts: [] });
+  // const lastChunkTime = useRef(Date.now());
+  const chunkCountRef = useRef(1);
+  const SIZE_THRESHOLD = 5 * 1024 * 1024; // 5MB threshold for chunking
+  const bufferedChunks = useRef<BlobPart[]>([]);
+  const bufferedSizeRef = useRef(0);
+  
+  
+  async function uploadChunkToS3(blob: Blob, partNumber: number) {
+    setRecordingStatus(`Uploading chunk ${partNumber}...`);
+    try {
+      const { key, uploadId } = uploadSessionRef.current;
+      if(!key || !uploadId || !partNumber) return;
+      const { url } = await getPresignedUrl(key, uploadId, partNumber);
+      const res = await fetch(url, {
+        method: 'PUT',
+        body: blob,
+        headers: { 'Content-Type': 'video/webm' }
+      });
+      if (!res.ok) throw new Error('Failed to upload chunk');
+      const eTag = res.headers.get('ETag') || '';
 
+      uploadSessionRef.current.parts.push({ PartNumber: partNumber, ETag: eTag });
+      setUploadProgress((prev) => prev + 1);
+    } catch (err) {
+      console.log("Error uploading chunk",err)
+      setRecordingStatus('Chunk upload failed');
+    }
+  }
+  useEffect(() => {
+    //eslint-disable-next-line 
+    let stopped = false;
+    async function startAutoRecording() {
+      console.log(mediaSoupClientState.current.localStream,"localstream")
+      if (!mediaSoupClientState.current.localStream) {
+        setRecordingStatus('No local stream to record');
+        setIsRecording(false);
+        return;
+      }
+      setUploadProgress(0);
+      setRecordingStatus('Starting...');
+      setIsRecording(true);
+      chunkCountRef.current = 1;
+      uploadSessionRef.current = { uploadId: '', key: '', parts: [] };
+      // Start multipart upload session
+      const filename = `meeting-recording-${Date.now()}.webm`;
+      try {
+        const { uploadId, key } = await startMultipartUpload(filename, 'video/webm');
+        uploadSessionRef.current.uploadId = uploadId;
+        uploadSessionRef.current.key = key;
+      } catch (err) {
+        console.log("Error starting multipart upload",err)
+        setRecordingStatus('Failed to start upload session');
+        setIsRecording(false);
+        return;
+      }
+      try {
+        const recorder = new MediaRecorder(mediaSoupClientState.current.localStream!, { mimeType: 'video/webm; codecs=vp9,opus',videoBitsPerSecond: 6_000_000, audioBitsPerSecond: 192_000 });
+        recorder.ondataavailable = async (event) => {
+          // const now = Date.now();
+          // const ChunkdurationSec = ((now - lastChunkTime.current) / 1000).toFixed(2);
+          // lastChunkTime.current = now;
+          // const chunkSizeMB = (event.data.size / (1024 * 1024)).toFixed(2);
+          // console.log(`Chunk Duration: ${ChunkdurationSec}s`);
+          // console.log(`Chunk Size: ${chunkSizeMB} MB`);
+
+          if (event.data && event.data.size > 0 && recorder.state === 'recording' && !stopped) {
+            bufferedChunks.current.push(event.data);
+            bufferedSizeRef.current += event.data.size;
+            if(bufferedSizeRef.current >= SIZE_THRESHOLD) { // atleast 5MB 
+              const bigBlob = new Blob(bufferedChunks.current, { type: event.data.type });
+              await uploadChunkToS3(bigBlob, chunkCountRef.current++);
+              bufferedChunks.current = [];
+              bufferedSizeRef.current = 0; 
+            };
+          }
+        }
+        recorder.onstart = () => {console.log('▶️ MediaRecorder started');setRecordingStatus('Recording...')};
+        recorder.onstop = async () => {
+          console.log('🛑 onstop triggered!');
+          setRecordingStatus('Finalizing...');
+          if(bufferedChunks.current.length > 0) {
+            const bigBlob = new Blob(bufferedChunks.current, { type: 'video/webm' });
+            await uploadChunkToS3(bigBlob, chunkCountRef.current++);
+            bufferedChunks.current = [];
+            bufferedSizeRef.current = 0; 
+          }
+          const { key, uploadId, parts } = uploadSessionRef.current;
+          try {
+            console.log(key,uploadId,parts)
+
+            if (key && uploadId && parts.length > 0) {
+              await completeMultipartUpload(key, uploadId, parts);
+              setRecordingStatus('Upload complete!');
+            } else {
+              console.warn('No parts uploaded, cannot finalize upload');
+              setRecordingStatus('No parts uploaded');
+            }
+          } catch (err) {
+            await abortMultipartUpload(key, uploadId);
+            console.log(err,"error")
+            setRecordingStatus('Failed to complete upload');
+          }
+          uploadSessionRef.current = { uploadId: '', key: '', parts: [] };
+          chunkCountRef.current = 1;
+          setIsRecording(false);
+        };
+        mediaRecorderRef.current = recorder;
+        recorder.start(5000);
+      } catch (err) {
+        console.error('Error starting MediaRecorder:', err);
+        setRecordingStatus('Failed to start recording');
+        setIsRecording(false);
+      }
+    }
+    console.log(isInCall,"isincall")
+    if (isInCall) {
+      startAutoRecording();
+    } else {
+      console.log(mediaRecorderRef.current?.state,"state")
+      if (mediaRecorderRef.current) {
+        try {
+          console.log("going kya")
+          mediaRecorderRef.current.stop(); 
+        } catch (err) {
+          console.warn('MediaRecorder already stopped:', err);
+        }
+      }
+      setIsRecording(false);
+      setRecordingStatus('');
+    }
+    return () => {
+      stopped = true;
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.stop();
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isInCall,mediaSoupClientState.current.localStream]);
+
+  useEffect(()=>{
+    toast.info(`Recording ${isRecording ? 'started' : 'stopped'}`,{
+      duration: 3000,
+      position: "top-center",
+      style: {
+        backgroundColor: "#ffffff",
+        color: "#000000",
+      }
+    })
+  },[isRecording])
+  
   useEffect(() => {
     connectWebSocket();
     return () => {
@@ -58,9 +215,10 @@ export default function VideoCall() {
         setRemoteUsers(new Map());
       }
     };
+    //eslint-disable-next-line
   }, []);
 
-  const handleWebSocketMessage = async (event: any) => {
+  const handleWebSocketMessage = async (event: MessageEvent) => {
     const decodedData = decodeBinaryMessage(event.data)
     const data = JSON.parse(decodedData) as EventMessage;
     switch (data.type) {
@@ -114,7 +272,7 @@ export default function VideoCall() {
       }
       case EventTypes.PRODUCER_CLOSED_NOTIFICATION: {
         const payload = data.message as EventPayloadMap[typeof EventTypes.PRODUCER_CLOSED_NOTIFICATION]
-        handlePrdoucerClosedScreenShareNotification(payload);
+        handleProdoucerClosedScreenShareNotification(payload);
         break;
       }
       case EventTypes.SPEAKING_USERS: {
@@ -313,7 +471,7 @@ export default function VideoCall() {
     try {
       setStatus("Starting call...");
       setIsInCall(true);
-      const audioContext = new AudioContext()
+      // const audioContext = new AudioContext()
       const stream = await navigator.mediaDevices.getUserMedia({
         video: isVideoEnabled,
         audio: isAudioEnabled
@@ -472,7 +630,7 @@ export default function VideoCall() {
     })
     console.log('done')
   }
-  const handlePrdoucerClosedScreenShareNotification = (data: any) => {
+  const handleProdoucerClosedScreenShareNotification = (data: any) => {
     const { peerId, producerId, kind, appData } = data;
     toast.info(`Peer ${peerId} stopped screen sharing`, {
       duration: 3000,
@@ -688,7 +846,7 @@ export default function VideoCall() {
       const consumer = await mediaSoupClientState.current.recvTransport?.consume({
         id: data.consumerId,
         producerId: data.producerId,
-        kind: data.kind,
+        kind: data.kind as "audio" | "video" | undefined,
         rtpParameters: data.rtpParameters,
         appData: data.appData,
       });
@@ -790,6 +948,14 @@ export default function VideoCall() {
           isInCall={isInCall}
           participantCount={participantCount}
         />
+
+        {/* Recording Status */}
+        {isInCall && (
+          <div className="mb-4 flex items-center gap-4">
+            <span className="ml-4 text-lg font-mono ">{recordingStatus}</span>
+            <span className="ml-4 text-sm">Chunks uploaded: {uploadProgress}</span>
+          </div>
+        )}
 
         {!isInCall ? (
           <PreCallScreen
