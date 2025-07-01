@@ -81,23 +81,21 @@ export default function VideoCall() {
       setRecordingStatus('Chunk upload failed');
     }
   }
-  useEffect(() => {
-    //eslint-disable-next-line 
-    let stopped = false;
-    async function startAutoRecording() {
-      console.log(mediaSoupClientState.current.localStream,"localstream")
-      if (!mediaSoupClientState.current.localStream) {
-        setRecordingStatus('No local stream to record');
+  const handleToggleRecording = async () => {
+    if (isRecording) {
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.stop();
         setIsRecording(false);
-        return;
+        setRecordingStatus('Stopped recording');
       }
-      setUploadProgress(0);
-      setRecordingStatus('Starting...');
-      setIsRecording(true);
-      chunkCountRef.current = 1;
-      uploadSessionRef.current = { uploadId: '', key: '', parts: [] };
-      // Start multipart upload session
-      const filename = `meeting-recording-${Date.now()}.webm`;
+    } else {
+      if (mediaSoupClientState.current.localStream) {
+        setRecordingStatus('Starting recording...');
+        setIsRecording(true);
+        setUploadProgress(0);
+        chunkCountRef.current = 1;
+        uploadSessionRef.current = { uploadId: '', key: '', parts: [] };
+        const filename = `meeting-recording-${Date.now()}.webm`;
       try {
         const { uploadId, key } = await startMultipartUpload(filename, 'video/webm');
         uploadSessionRef.current.uploadId = uploadId;
@@ -111,14 +109,9 @@ export default function VideoCall() {
       try {
         const recorder = new MediaRecorder(mediaSoupClientState.current.localStream!, { mimeType: 'video/webm; codecs=vp9,opus',videoBitsPerSecond: 6_000_000, audioBitsPerSecond: 192_000 });
         recorder.ondataavailable = async (event) => {
-          // const now = Date.now();
-          // const ChunkdurationSec = ((now - lastChunkTime.current) / 1000).toFixed(2);
-          // lastChunkTime.current = now;
-          // const chunkSizeMB = (event.data.size / (1024 * 1024)).toFixed(2);
-          // console.log(`Chunk Duration: ${ChunkdurationSec}s`);
-          // console.log(`Chunk Size: ${chunkSizeMB} MB`);
 
-          if (event.data && event.data.size > 0 && recorder.state === 'recording' && !stopped) {
+
+          if (event.data && event.data.size > 0 && recorder.state === 'recording') {
             bufferedChunks.current.push(event.data);
             bufferedSizeRef.current += event.data.size;
             if(bufferedSizeRef.current >= SIZE_THRESHOLD) { // atleast 5MB 
@@ -166,31 +159,53 @@ export default function VideoCall() {
         setRecordingStatus('Failed to start recording');
         setIsRecording(false);
       }
-    }
-    console.log(isInCall,"isincall")
-    if (isInCall) {
-      startAutoRecording();
-    } else {
-      console.log(mediaRecorderRef.current?.state,"state")
-      if (mediaRecorderRef.current) {
-        try {
-          console.log("going kya")
-          mediaRecorderRef.current.stop(); 
-        } catch (err) {
-          console.warn('MediaRecorder already stopped:', err);
-        }
+      } else {
+        setRecordingStatus('No local stream to record');
       }
-      setIsRecording(false);
-      setRecordingStatus('');
     }
-    return () => {
-      stopped = true;
-      if (mediaRecorderRef.current) {
-        mediaRecorderRef.current.stop();
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isInCall,mediaSoupClientState.current.localStream]);
+  }
+  // useEffect(() => {
+  //   //eslint-disable-next-line 
+  //   let stopped = false;
+  //   async function startAutoRecording() {
+  //     console.log(mediaSoupClientState.current.localStream,"localstream")
+  //     if (!mediaSoupClientState.current.localStream) {
+  //       setRecordingStatus('No local stream to record');
+  //       setIsRecording(false);
+  //       return;
+  //     }
+  //     setUploadProgress(0);
+  //     setRecordingStatus('Starting...');
+  //     setIsRecording(true);
+  //     chunkCountRef.current = 1;
+  //     uploadSessionRef.current = { uploadId: '', key: '', parts: [] };
+  //     // Start multipart upload session
+      
+  //   }
+  //   console.log(isInCall,"isincall")
+  //   if (isInCall) {
+  //     startAutoRecording();
+  //   } else {
+  //     console.log(mediaRecorderRef.current?.state,"state")
+  //     if (mediaRecorderRef.current) {
+  //       try {
+  //         console.log("going kya")
+  //         mediaRecorderRef.current.stop(); 
+  //       } catch (err) {
+  //         console.warn('MediaRecorder already stopped:', err);
+  //       }
+  //     }
+  //     setIsRecording(false);
+  //     setRecordingStatus('');
+  //   }
+  //   return () => {
+  //     stopped = true;
+  //     if (mediaRecorderRef.current) {
+  //       mediaRecorderRef.current.stop();
+  //     }
+  //   };
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [isInCall,mediaSoupClientState.current.localStream]);
 
   useEffect(()=>{
     toast.info(`Recording ${isRecording ? 'started' : 'stopped'}`,{
@@ -981,6 +996,8 @@ export default function VideoCall() {
               onToggleVideo={toggleVideo}
               onToggleScreenShare={toggleScreenShare}
               onEndCall={endCall}
+              onToggleRecording={handleToggleRecording}
+              isRecording={isRecording}
             />
           </div>
         )}
