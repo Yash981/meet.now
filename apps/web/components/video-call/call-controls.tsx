@@ -1,14 +1,19 @@
-import { Mic, MicOff, Video, VideoOff, MonitorUp, MonitorX, PhoneOff, Disc, CircleStop } from "lucide-react";
+"use client";
+import { Mic, MicOff, Video, VideoOff, MonitorUp, MonitorX, PhoneOff, MessageSquare, Sparkles, Settings, Square, Circle } from "lucide-react";
+import { useState } from "react";
+import { Button } from "../ui/button";
 
 interface CallControlsProps {
   isAudioEnabled: boolean;
   isVideoEnabled: boolean;
   isScreenSharing: boolean;
   isRecording?: boolean;
+  showChat?: boolean;
   onToggleAudio: () => void;
   onToggleVideo: () => void;
   onToggleScreenShare: () => void;
-  onToggleRecording?: () => void;
+  onToggleRecording: () => void;
+  onToggleChat?: () => void;
   onEndCall: () => void;
 }
 
@@ -22,58 +27,129 @@ export const CallControls = ({
   onEndCall,
   isRecording,
   onToggleRecording,
-}: CallControlsProps) => (
-  <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2">
-    <div className="flex items-center space-x-4 bg-slate-800/80 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-slate-700/50">
-      <button
-        onClick={onToggleAudio}
-        className={`p-3 rounded-xl transition-all ${
-          isAudioEnabled
-            ? 'bg-slate-700 hover:bg-slate-600 text-white'
-            : 'bg-red-500 hover:bg-red-600 text-white'
-        }`}
-      >
-        {isAudioEnabled ? <Mic size={20} /> : <MicOff size={20} />}
-      </button>
+  onToggleChat,
+  showChat = false,
+}: CallControlsProps) => {
+    const [hoveredButton, setHoveredButton] = useState<string | null>(null);
+  const ControlButton = ({ 
+    onClick, 
+    isActive, 
+    isDestructive = false,
+    children,
+    id,
+  }: {
+    onClick: () => void;
+    isActive?: boolean;
+    isDestructive?: boolean;
+    children: React.ReactNode;
+    id: string;
+  }) => (
+    <Button
+      onClick={onClick}
+      onMouseEnter={() => setHoveredButton(id)}
+      onMouseLeave={() => setHoveredButton(null)}
+      size="icon"
+      variant={isDestructive ? "destructive" : (isActive === false ? "destructive" : "secondary")}
+      className={`
+        relative w-10 h-10 md:w-12 md:h-12 !rounded-full transition-all duration-200 transform
+        ${hoveredButton === id ? 'scale-110 cursor-pointer' : 'scale-100'}
+        shadow-lg hover:shadow-xl text-foreground
+        ${isDestructive 
+          ? 'bg-red-500 hover:bg-red-600 text-white' 
+          : isActive === false 
+            ? 'bg-red-500 hover:bg-red-600 text-white' 
+            : 'bg-white text-gray-800 hover:bg-gray-100 dark:bg-slate-100 dark:text-slate-900'
+        }
+      `}
+    >
+      <div className="flex items-center justify-center w-full h-full">
+        {children}
+      </div>
+    </Button>
+  );
+  return (
+    <div className="fixed bottom-6 md:bottom-8 left-1/2 transform -translate-x-1/2 z-50">
+      <div className="flex items-center space-x-2 md:space-x-3 bg-slate-900/80 backdrop-blur-xl rounded-full p-3 md:p-4 shadow-2xl border border-white/10">
+        
+        {/* Audio Control */}
+        <ControlButton
+          onClick={onToggleAudio}
+          isActive={isAudioEnabled}
+          id="audio"
+        >
+          {isAudioEnabled ? <Mic size={20} /> : <MicOff size={20} />}
+        </ControlButton>
 
-      <button
-        onClick={onToggleVideo}
-        className={`p-3 rounded-xl transition-all ${
-          isVideoEnabled
-            ? 'bg-slate-700 hover:bg-slate-600 text-white'
-            : 'bg-red-500 hover:bg-red-600 text-white'
-        }`}
-      >
-        {isVideoEnabled ? <Video size={20} /> : <VideoOff size={20} />}
-      </button>
+        {/* Video Control */}
+        <ControlButton
+          onClick={onToggleVideo}
+          isActive={isVideoEnabled}
+          id="video"
+        >
+          {isVideoEnabled ? <Video size={20} /> : <VideoOff size={20} />}
+        </ControlButton>
 
-      <button
-        onClick={onToggleScreenShare}
-        className={`p-3 rounded-xl ${
-          !isScreenSharing
-            ? 'bg-slate-700 hover:bg-slate-600 text-white'
-            : 'bg-red-500 hover:bg-red-600 text-white'
-        } transition-all`}
-      >
-        {isScreenSharing ? <MonitorX size={20} /> : <MonitorUp size={20} />}
-      </button>
-      <button
-        onClick={onToggleRecording}
-        className={`p-2 rounded-lg ${
-          !isRecording
-            ? 'bg-red-500 text-white'
-            : 'bg-red-500 hover:bg-red-600 text-white'
-        } transition-all`}
-      >
-        {!isRecording ? <div className="flex gap-2 justify-center items-center cursor-pointer"><Disc size={20} /><span className="text-lg">Record</span></div> : <div className="flex gap-2 justify-center items-center cursor-pointer"><CircleStop size={20} className={`${isRecording ? "bg-red-500":""} `} color="red"/><span className="text-lg text-white">Stop</span></div>}
-      </button>
+        {/* Screen Share Control */}
+        <ControlButton
+          onClick={onToggleScreenShare}
+          isActive={!isScreenSharing}
+          id="screen"
+        >
+          {isScreenSharing ? <MonitorX size={20} /> : <MonitorUp size={20} />}
+        </ControlButton>
 
-      <button
-        onClick={onEndCall}
-        className="p-3 rounded-xl bg-red-500 hover:bg-red-600 text-white transition-all"
-      >
-        <PhoneOff size={20} />
-      </button>
+        {/* Chat/Messages */}
+        <ControlButton
+          onClick={() => onToggleChat?.()}
+          isActive={!showChat}
+          id="chat"
+        >
+          <MessageSquare size={20} />
+        </ControlButton>
+
+        {/* Effects/Filters */}
+        <ControlButton
+          onClick={() => {}}
+          isActive={true}
+          id="effects"
+        >
+          <Sparkles size={20} />
+        </ControlButton>
+
+        {/* Settings */}
+        <ControlButton
+          onClick={() => {}}
+          isActive={true}
+          id="settings"
+        >
+          <Settings size={20} />
+        </ControlButton>
+
+        {/* Record Control */}
+        <ControlButton
+          onClick={onToggleRecording}
+          isActive={true}
+          id="record"
+        >
+          {isRecording ? (
+            <Square size={16} fill="currentColor" />
+          ) : (
+            <div className="relative">
+              <Circle size={16} stroke="currentColor" fill="none" strokeWidth={2} />
+              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-red-500 rounded-full"></div>
+            </div>
+          )}
+        </ControlButton>
+
+        {/* End Call Control */}
+        <ControlButton
+          onClick={onEndCall}
+          isDestructive={true}
+          id="end"
+        >
+          <PhoneOff size={20} />
+        </ControlButton>
+      </div>
     </div>
-  </div>
-); 
+)
+}; 

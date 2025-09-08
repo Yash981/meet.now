@@ -21,6 +21,8 @@ export enum EventTypes {
   JOIN_ROOM = "JOIN_ROOM",
   LOCAL_USER_MEDIA_TOGGLED="LOCAL_USER_MEDIA_TOGGLED",
   REMOTE_USER_MEDIA_TOGGLED="REMOTE_USER_MEDIA_TOGGLED",
+  SEND_CHAT_MESSAGE = "SEND_CHAT_MESSAGE",
+  RECEIVE_CHAT_MESSAGE = "RECEIVE_CHAT_MESSAGE",
 }
 
 export interface AppData {
@@ -105,6 +107,8 @@ export interface EventPayloadMap {
   [EventTypes.JOIN_ROOM]: { roomId: string };
   [EventTypes.LOCAL_USER_MEDIA_TOGGLED]: {roomId:string,peerId:string,type: Omit<KindType,"screen">,enable:boolean};
   [EventTypes.REMOTE_USER_MEDIA_TOGGLED]:{roomId:string,peerId:string,type: Omit<KindType,"screen">,enable:boolean};
+  [EventTypes.SEND_CHAT_MESSAGE]: {roomId:string,peerId:string,peerName:string,message:string,timestamp:string};
+  [EventTypes.RECEIVE_CHAT_MESSAGE]: {roomId:string,peerId:string,peerName:string,message:string,timestamp:string};
 }
 
 export type EventMessage<T extends EventTypes = EventTypes> = {

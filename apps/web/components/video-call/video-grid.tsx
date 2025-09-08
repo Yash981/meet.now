@@ -33,7 +33,7 @@ export const VideoGrid = ({
   };
 
   return (
-    <div className={`grid ${getGridClass()} gap-4`}>
+    <div className={`grid ${getGridClass()} gap-3 md:gap-4`}>
       {<LocalVideo
         isAudioEnabled={isAudioEnabled}
         isVideoEnabled={isVideoEnabled}

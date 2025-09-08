@@ -2,28 +2,24 @@
 import { useEffect, useRef, useState } from "react";
 import { Device } from "mediasoup-client";
 import { EventMessage, EventPayloadMap, EventTypes } from "@repo/types";
-import { Consumer, Producer, RtpCapabilities, Transport } from "mediasoup-client/types";
+import { RtpCapabilities } from "mediasoup-client/types";
 import { toast } from "sonner"
 import { RemoteUser, useUIStore } from "@/store";
 import { Header } from "@/components/video-call/header";
 import { Background } from "@/components/video-call/background";
-import {  PreCallScreen } from "@/components/video-call/pre-call-screen";
+import { PreCallScreen } from "@/components/video-call/pre-call-screen";
 import { VideoGrid } from "@/components/video-call/video-grid";
 import { CallControls } from "@/components/video-call/call-controls";
-import {decodeBinaryMessage,encodeBinaryMessage} from "@repo/utils"
-import { abortMultipartUpload, completeMultipartUpload, getPresignedUrl, startMultipartUpload } from "@/lib/utils";
+import { decodeBinaryMessage, encodeBinaryMessage } from "@repo/utils"
+// recording utils are now used inside hooks
+import { useRecording } from "./hooks/useRecording";
+import { useScreenShare } from "./hooks/useScreenShare";
+import type { PeerClientState } from "./types";
+import { Badge } from "@/components/ui/badge";
+import { SidebarParticipants } from "@/components/video-call/sidebar-participants";
+import { ChatSidebar } from "@/components/video-call/chat-sidebar";
 
-export type PeerClientState = {
-  peerId: string;
-  device: Device | null;
-  sendTransport: Transport | null;
-  recvTransport: Transport | null;
-  producers: Map<string, Producer>;
-  consumers: Map<string, Consumer>;
-  rtpCapabilities: RtpCapabilities | null;
-  localStream: MediaStream | null;
-  screenStream: MediaStream | null;
-};
+export type { PeerClientState };
 
 export default function VideoCall() {
   const { remoteUsers, setRemoteUsers, speakingUsers, setSpeakingUsers } = useUIStore()
@@ -38,186 +34,21 @@ export default function VideoCall() {
     rtpCapabilities: null,
     screenStream: null,
   });
-  
+
   const wsRef = useRef<WebSocket>(null);
   const [status, setStatus] = useState("Disconnected");
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isInCall, setIsInCall] = useState(false);
   const [participantCount, setParticipantCount] = useState(0);
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
-  
-  // --- Recording State ---
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingStatus, setRecordingStatus] = useState<string>("");
-  const [uploadProgress, setUploadProgress] = useState<number>(0);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const uploadSessionRef = useRef<{ uploadId: string; key: string; parts: { PartNumber: number; ETag: string }[] }>({ uploadId: '', key: '', parts: [] });
-  // const lastChunkTime = useRef(Date.now());
-  const chunkCountRef = useRef(1);
-  const SIZE_THRESHOLD = 5 * 1024 * 1024; // 5MB threshold for chunking
-  const bufferedChunks = useRef<BlobPart[]>([]);
-  const bufferedSizeRef = useRef(0);
-  
-  
-  async function uploadChunkToS3(blob: Blob, partNumber: number) {
-    setRecordingStatus(`Uploading chunk ${partNumber}...`);
-    try {
-      const { key, uploadId } = uploadSessionRef.current;
-      if(!key || !uploadId || !partNumber) return;
-      const { url } = await getPresignedUrl(key, uploadId, partNumber);
-      const res = await fetch(url, {
-        method: 'PUT',
-        body: blob,
-        headers: { 'Content-Type': 'video/webm' }
-      });
-      if (!res.ok) throw new Error('Failed to upload chunk');
-      const eTag = res.headers.get('ETag') || '';
-
-      uploadSessionRef.current.parts.push({ PartNumber: partNumber, ETag: eTag });
-      setUploadProgress((prev) => prev + 1);
-    } catch (err) {
-      console.log("Error uploading chunk",err)
-      setRecordingStatus('Chunk upload failed');
-    }
-  }
-  const handleToggleRecording = async () => {
-    if (isRecording) {
-      if (mediaRecorderRef.current) {
-        mediaRecorderRef.current.stop();
-        setIsRecording(false);
-        setRecordingStatus('Stopped recording');
-      }
-    } else {
-      if (mediaSoupClientState.current.localStream) {
-        setRecordingStatus('Starting recording...');
-        setIsRecording(true);
-        setUploadProgress(0);
-        chunkCountRef.current = 1;
-        uploadSessionRef.current = { uploadId: '', key: '', parts: [] };
-        const filename = `meeting-recording-${Date.now()}.webm`;
-      try {
-        const { uploadId, key } = await startMultipartUpload(filename, 'video/webm');
-        uploadSessionRef.current.uploadId = uploadId;
-        uploadSessionRef.current.key = key;
-      } catch (err) {
-        console.log("Error starting multipart upload",err)
-        setRecordingStatus('Failed to start upload session');
-        setIsRecording(false);
-        return;
-      }
-      try {
-        const recorder = new MediaRecorder(mediaSoupClientState.current.localStream!, { mimeType: 'video/webm; codecs=vp9,opus',videoBitsPerSecond: 6_000_000, audioBitsPerSecond: 192_000 });
-        recorder.ondataavailable = async (event) => {
+  const { isScreenSharing, toggleScreenShare } = useScreenShare(mediaSoupClientState as any, wsRef as any, setStatus);
+  const { isRecording, recordingStatus, uploadProgress, handleToggleRecording } = useRecording(mediaSoupClientState as any);
+  const [showSidebar, setShowSidebar] = useState(false);
+  const [showChat, setShowChat] = useState(false);
 
 
-          if (event.data && event.data.size > 0 && recorder.state === 'recording') {
-            bufferedChunks.current.push(event.data);
-            bufferedSizeRef.current += event.data.size;
-            if(bufferedSizeRef.current >= SIZE_THRESHOLD) { // atleast 5MB 
-              const bigBlob = new Blob(bufferedChunks.current, { type: event.data.type });
-              await uploadChunkToS3(bigBlob, chunkCountRef.current++);
-              bufferedChunks.current = [];
-              bufferedSizeRef.current = 0; 
-            };
-          }
-        }
-        recorder.onstart = () => {console.log('▶️ MediaRecorder started');setRecordingStatus('Recording...')};
-        recorder.onstop = async () => {
-          console.log('🛑 onstop triggered!');
-          setRecordingStatus('Finalizing...');
-          if(bufferedChunks.current.length > 0) {
-            const bigBlob = new Blob(bufferedChunks.current, { type: 'video/webm' });
-            await uploadChunkToS3(bigBlob, chunkCountRef.current++);
-            bufferedChunks.current = [];
-            bufferedSizeRef.current = 0; 
-          }
-          const { key, uploadId, parts } = uploadSessionRef.current;
-          try {
-            console.log(key,uploadId,parts)
 
-            if (key && uploadId && parts.length > 0) {
-              await completeMultipartUpload(key, uploadId, parts);
-              setRecordingStatus('Upload complete!');
-            } else {
-              console.warn('No parts uploaded, cannot finalize upload');
-              setRecordingStatus('No parts uploaded');
-            }
-          } catch (err) {
-            await abortMultipartUpload(key, uploadId);
-            console.log(err,"error")
-            setRecordingStatus('Failed to complete upload');
-          }
-          uploadSessionRef.current = { uploadId: '', key: '', parts: [] };
-          chunkCountRef.current = 1;
-          setIsRecording(false);
-        };
-        mediaRecorderRef.current = recorder;
-        recorder.start(5000);
-      } catch (err) {
-        console.error('Error starting MediaRecorder:', err);
-        setRecordingStatus('Failed to start recording');
-        setIsRecording(false);
-      }
-      } else {
-        setRecordingStatus('No local stream to record');
-      }
-    }
-  }
-  // useEffect(() => {
-  //   //eslint-disable-next-line 
-  //   let stopped = false;
-  //   async function startAutoRecording() {
-  //     console.log(mediaSoupClientState.current.localStream,"localstream")
-  //     if (!mediaSoupClientState.current.localStream) {
-  //       setRecordingStatus('No local stream to record');
-  //       setIsRecording(false);
-  //       return;
-  //     }
-  //     setUploadProgress(0);
-  //     setRecordingStatus('Starting...');
-  //     setIsRecording(true);
-  //     chunkCountRef.current = 1;
-  //     uploadSessionRef.current = { uploadId: '', key: '', parts: [] };
-  //     // Start multipart upload session
-      
-  //   }
-  //   console.log(isInCall,"isincall")
-  //   if (isInCall) {
-  //     startAutoRecording();
-  //   } else {
-  //     console.log(mediaRecorderRef.current?.state,"state")
-  //     if (mediaRecorderRef.current) {
-  //       try {
-  //         console.log("going kya")
-  //         mediaRecorderRef.current.stop(); 
-  //       } catch (err) {
-  //         console.warn('MediaRecorder already stopped:', err);
-  //       }
-  //     }
-  //     setIsRecording(false);
-  //     setRecordingStatus('');
-  //   }
-  //   return () => {
-  //     stopped = true;
-  //     if (mediaRecorderRef.current) {
-  //       mediaRecorderRef.current.stop();
-  //     }
-  //   };
-  //   // eslint-disable-next-line react-hooks/exhaustive-deps
-  // }, [isInCall,mediaSoupClientState.current.localStream]);
 
-  useEffect(()=>{
-    toast.info(`Recording ${isRecording ? 'started' : 'stopped'}`,{
-      duration: 3000,
-      position: "top-center",
-      style: {
-        backgroundColor: "#ffffff",
-        color: "#000000",
-      }
-    })
-  },[isRecording])
-  
   useEffect(() => {
     connectWebSocket();
     return () => {
@@ -295,139 +126,25 @@ export default function VideoCall() {
         handleSpeakingUsers(payload);
         break
       }
-      case EventTypes.REMOTE_USER_MEDIA_TOGGLED:{
+      case EventTypes.REMOTE_USER_MEDIA_TOGGLED: {
         const payload = data.message as EventPayloadMap[typeof EventTypes.REMOTE_USER_MEDIA_TOGGLED]
         handleRemoteUserVideoOff(payload)
-        break
+        break;
       }
+
+      // case EventTypes.RECEIVE_CHAT_MESSAGE: {
+      //   const payload = data.message as EventPayloadMap[typeof EventTypes.RECEIVE_CHAT_MESSAGE]
+      //   handleChatMessage(payload)
+      //   break;
+      // }
+      // case EventTypes.RECEIVE_CHAT_MESSAGE: {
+      //   const payload = data.message as EventPayloadMap[typeof EventTypes.RECEIVE_CHAT_MESSAGE]
+      //   console.log("Received chat message:", payload);
+
+      // }
 
     }
   };
-  const toggleScreenShare = async (browserStopSharing?: boolean) => {
-    console.log("Toggle screen sharing:", isScreenSharing, browserStopSharing);
-    if (isScreenSharing || browserStopSharing === true) {
-      console.log('Stopping screen sharing...');
-      try {
-        if (mediaSoupClientState.current.screenStream) {
-          mediaSoupClientState.current.screenStream.getTracks().forEach(track => track.stop());
-          mediaSoupClientState.current.screenStream = null;
-        }
-        // Find and close screen producer
-        const screenProducer = Array.from(mediaSoupClientState.current.producers.values())
-          .find(producer => producer.appData?.type === 'screen');
-        if (screenProducer) {
-          screenProducer.close();
-          mediaSoupClientState.current.producers.delete(screenProducer.id);
-
-          // Notify server to remove screen producer
-          wsRef.current?.send(encodeBinaryMessage(JSON.stringify({
-            type: EventTypes.PRODUCER_CLOSED,
-            message: {
-              producerId: screenProducer.id,
-              kind: "screen",
-              roomId: "123"
-            }
-          })));
-        }
-        setIsScreenSharing(false);
-        setStatus("In call");
-        toast.success("Screen sharing stopped", {
-          duration: 3000,
-          position: "top-center",
-          style: {
-            backgroundColor: "#ffffff",
-            color: "#000000",
-          }
-        });
-      } catch (error) {
-        console.error("Error stopping screen sharing:", error);
-        setStatus("Error stopping screen sharing");
-        toast.error("Error stopping screen sharing", {
-          duration: 3000,
-          position: "top-center",
-          style: {
-            backgroundColor: "#ffffff",
-            color: "#000000",
-          }
-        });
-      }
-    } else {
-
-      console.log('Starting screen sharing...');
-      // Start screen sharing
-      try {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            displaySurface: "monitor",
-            width: { ideal: 1920, max: 1920 },
-            height: { ideal: 1080, max: 1080 },
-            frameRate: { ideal: 15, max: 30 }
-          }
-        })
-        mediaSoupClientState.current.screenStream = screenStream;
-
-        screenStream.getVideoTracks()[0]?.addEventListener("ended", async () => {
-          console.log('Screen sharing ended by user');
-          await toggleScreenShare(true)
-        })
-
-
-        if (mediaSoupClientState.current.sendTransport) {
-          const videoTrack = screenStream.getVideoTracks()[0];
-          if (videoTrack) {
-            setIsScreenSharing(true);
-            const screenProducer = await mediaSoupClientState.current.sendTransport.produce({
-              track: videoTrack,
-              encodings: [
-                { rid: "r0", maxBitrate: 500000, scalabilityMode: "S1T3" },
-                { rid: "r1", maxBitrate: 1000000, scalabilityMode: "S1T3" },
-                { rid: "r2", maxBitrate: 2000000, scalabilityMode: "S1T3" }
-              ],
-              codecOptions: { videoGoogleStartBitrate: 1000 },
-              appData: { type: "screen" }
-            })
-            if (screenProducer) {
-              mediaSoupClientState.current.producers.set(screenProducer.id, screenProducer);
-            }
-          }
-          setStatus("Screen Sharing active");
-          toast.success("Screen Sharing Started", {
-            duration: 3000,
-            position: "top-center",
-            style: {
-              backgroundColor: "#ffffff",
-              color: "#000000",
-            }
-          })
-        }
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "NotAllowedError") {
-          setIsScreenSharing(false);
-          toast.error("Screen sharing was cancelled.", {
-            duration: 3000,
-            position: "top-center",
-            style: {
-              backgroundColor: "#ffffff",
-              color: "#000000",
-            }
-          });
-        } else {
-          console.error("Error starting screen share:", error);
-          toast.error("Failed to start screen sharing", {
-            duration: 3000,
-            position: "top-center",
-            style: {
-              backgroundColor: "#ffffff",
-              color: "#000000",
-            }
-          });
-        }
-
-      }
-
-    }
-
-  }
 
   const connectWebSocket = () => {
     const ws = new WebSocket("ws://localhost:8080");
@@ -475,7 +192,7 @@ export default function VideoCall() {
       await mediaSoupClientState.current.device.load({ routerRtpCapabilities: rtpCapabilities });
       mediaSoupClientState.current.rtpCapabilities = rtpCapabilities;
       setStatus("Ready");
-      console.log("Device created:", mediaSoupClientState.current.device);
+      console.log("Device RTP capabililties", mediaSoupClientState.current.device.rtpCapabilities);
     } catch (error) {
       console.error("Error creating device:", error);
       setStatus("Error creating device");
@@ -516,13 +233,13 @@ export default function VideoCall() {
       //       finalStream.addTrack(filteredAudioTrack);
       //     }
 
-      //     if (isVideoEnabled) {
-      //       const rawVideoTrack = stream.getVideoTracks()[0];
-      //       if (rawVideoTrack) {
-      //         finalStream.addTrack(rawVideoTrack);
-      //       }
+      //   if (isVideoEnabled) {
+      //     const rawVideoTrack = stream.getVideoTracks()[0];
+      //     if (rawVideoTrack) {
+      //       finalStream.addTrack(rawVideoTrack);
       //     }
       //   }
+      // }
 
       //   mediaSoupClientState.current.localStream = finalStream;
 
@@ -550,7 +267,7 @@ export default function VideoCall() {
           roomId: "123"
         }
       })));
-    } catch (error:any) {
+    } catch (error: any) {
       if (error.name === 'NotAllowedError') {
         setStatus('Camera access was denied. Please allow permission to continue.');
       } else if (error.name === 'NotFoundError') {
@@ -559,7 +276,7 @@ export default function VideoCall() {
         setStatus('Camera is already in use by another application.');
       } else {
         setStatus('An unexpected error occurred: ' + error.message);
-      }    
+      }
       setIsInCall(false);
     }
   };
@@ -579,7 +296,7 @@ export default function VideoCall() {
       mediaSoupClientState.current.screenStream.getTracks().forEach(track => track.stop());
       mediaSoupClientState.current.screenStream = null;
     }
-    setIsScreenSharing(false)
+    // screen share state is handled by the hook
     // Clear video elements
     const localVideoEl = document.getElementById("local-video") as HTMLVideoElement;
     if (localVideoEl) localVideoEl.srcObject = null;
@@ -591,16 +308,16 @@ export default function VideoCall() {
       if (videoTrack) {
         videoTrack.enabled = !isVideoEnabled;
         setIsVideoEnabled(!isVideoEnabled);
-        
-        
+
+
       }
       wsRef?.current?.send(encodeBinaryMessage(JSON.stringify({
         type: EventTypes.LOCAL_USER_MEDIA_TOGGLED,
-        message:{
-          peerId:mediaSoupClientState.current.peerId,
-          roomId:"123",
-          type:"video",
-          enable:!isVideoEnabled
+        message: {
+          peerId: mediaSoupClientState.current.peerId,
+          roomId: "123",
+          type: "video",
+          enable: !isVideoEnabled
         }
 
       } as EventMessage)))
@@ -616,37 +333,37 @@ export default function VideoCall() {
       }
       wsRef?.current?.send(encodeBinaryMessage(JSON.stringify({
         type: EventTypes.LOCAL_USER_MEDIA_TOGGLED,
-        message:{
-          peerId:mediaSoupClientState.current.peerId,
-          roomId:"123",
-          type:"audio",
+        message: {
+          peerId: mediaSoupClientState.current.peerId,
+          roomId: "123",
+          type: "audio",
           enable: !isAudioEnabled
         }
 
       } as EventMessage)))
     }
   };
-  const handleRemoteUserVideoOff = (data:EventPayloadMap[typeof EventTypes.REMOTE_USER_MEDIA_TOGGLED]) => {
-    const {peerId:remotePeerId,type,enable} = data
-    useUIStore.getState().setRemoteUsers((prev: Map<string, RemoteUser>)=>{
+  const handleRemoteUserVideoOff = (data: EventPayloadMap[typeof EventTypes.REMOTE_USER_MEDIA_TOGGLED]) => {
+    const { peerId: remotePeerId, type, enable } = data
+    useUIStore.getState().setRemoteUsers((prev: Map<string, RemoteUser>) => {
       const newUsers = new Map(prev);
       const existingUser = newUsers.get(remotePeerId)
       console.log(existingUser)
-      if(existingUser){
-        if(type==="video") {
+      if (existingUser) {
+        if (type === "video") {
           existingUser.videoEnabled = enable
         }
-        if(type==="audio") {
+        if (type === "audio") {
           existingUser.audioEnabled = enable
         }
-        newUsers.set(remotePeerId,existingUser)
+        newUsers.set(remotePeerId, existingUser)
       }
       return newUsers
     })
     console.log('done')
   }
   const handleProdoucerClosedScreenShareNotification = (data: any) => {
-    const { peerId, producerId, kind, appData } = data;
+    const { peerId, _producerId, kind, appData } = data;
     toast.info(`Peer ${peerId} stopped screen sharing`, {
       duration: 3000,
       position: "top-center",
@@ -955,22 +672,32 @@ export default function VideoCall() {
   }, [remoteUsers]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white relative overflow-hidden">
+
+    <div className="min-h-screen  text-white relative overflow-hidden">
+      {/* bg-gradient-to-br from-slate-950 via-[#0b0b1a] to-slate-900 */}
       <Background />
-      <div className="relative z-10 p-6">
+      <div className="relative z-10 p-4 md:p-6 max-w-[1400px] mx-auto">
         <Header
           status={status}
           isInCall={isInCall}
           participantCount={participantCount}
+          onCopyLink={() => navigator.clipboard.writeText(window.location.href)}
+          onInvite={() => navigator.clipboard.writeText(window.location.href)}
+          onToggleSidebar={() => setShowSidebar((v) => !v)}
+          showSidebar={showSidebar}
         />
 
-        {/* Recording Status */}
+        {/* Recording Status
         {isInCall && (
-          <div className="mb-4 flex items-center gap-4">
-            <span className="ml-4 text-lg font-mono ">{recordingStatus}</span>
-            <span className="ml-4 text-sm">Chunks uploaded: {uploadProgress}</span>
+          <div className="mb-4 flex flex-wrap items-center gap-2 md:gap-3">
+            <Badge variant={recordingStatus.includes('Recording') ? 'destructive' : 'secondary'} className="text-xs md:text-sm">
+              {recordingStatus || "Ready"}
+            </Badge>
+            <Badge variant="outline" className="text-[10px] md:text-xs">
+              Uploaded parts: {uploadProgress}
+            </Badge>
           </div>
-        )}
+        )} */}
 
         {!isInCall ? (
           <PreCallScreen
@@ -978,27 +705,45 @@ export default function VideoCall() {
             onStartCall={startCall}
           />
         ) : (
-          <div className="space-y-6">
-            <VideoGrid
-              remoteUsers={remoteUsers}
-              speakingUsers={speakingUsers}
-              localPeerId={mediaSoupClientState.current.peerId}
-              isAudioEnabled={isAudioEnabled}
-              isVideoEnabled={isVideoEnabled}
-              videoStream = {mediaSoupClientState.current.localStream}
-            />
-
-            <CallControls
-              isAudioEnabled={isAudioEnabled}
-              isVideoEnabled={isVideoEnabled}
-              isScreenSharing={isScreenSharing}
-              onToggleAudio={toggleAudio}
-              onToggleVideo={toggleVideo}
-              onToggleScreenShare={toggleScreenShare}
-              onEndCall={endCall}
-              onToggleRecording={handleToggleRecording}
-              isRecording={isRecording}
-            />
+          <div className="flex flex-col lg:flex-row gap-4">
+            <div className="flex-1 flex flex-col p-2 md:p-4 gap-4 min-h-0">
+              <div className="flex-1 min-h-0">
+                <VideoGrid
+                  remoteUsers={remoteUsers}
+                  speakingUsers={speakingUsers}
+                  localPeerId={mediaSoupClientState.current.peerId}
+                  isAudioEnabled={isAudioEnabled}
+                  isVideoEnabled={isVideoEnabled}
+                  videoStream={mediaSoupClientState.current.localStream ?? null}
+                />
+              </div>
+              <div className="flex-shrink-0">
+                <CallControls
+                  isAudioEnabled={isAudioEnabled}
+                  isVideoEnabled={isVideoEnabled}
+                  isScreenSharing={isScreenSharing}
+                  onToggleAudio={toggleAudio}
+                  onToggleVideo={toggleVideo}
+                  onToggleScreenShare={toggleScreenShare}
+                  onEndCall={endCall}
+                  onToggleRecording={handleToggleRecording}
+                  isRecording={isRecording}
+                  showChat={showChat}
+                  onToggleChat={() => setShowChat(v => !v)}
+                />
+              </div>
+            </div>
+            {(showSidebar || showChat) && <div className="flex flex-col gap-4 lg:w-[300px] xl:w-[350px] 2xl:w-[400px] flex-shrink-0">
+              {showSidebar && <SidebarParticipants localPeerId={mediaSoupClientState.current.peerId} />}
+              {showChat && (
+                <ChatSidebar
+                  localPeerId={mediaSoupClientState.current.peerId}
+                  roomId="123"
+                  ws={wsRef.current}
+                  localUserName="You"
+                />
+              )}
+            </div>}
           </div>
         )}
       </div>

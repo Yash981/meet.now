@@ -117,6 +117,25 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
                 if(userRoom){
                     userRoom.handleLocalUserVideoOff(localUserVideoOff,ws,peerId)
                 }
+                break;
+            case EventTypes.SEND_CHAT_MESSAGE:
+                const chatMessagePayload = data.message as EventPayloadMap[typeof EventTypes.SEND_CHAT_MESSAGE]
+                const chatRoom = roomManager.getRoom(chatMessagePayload.roomId);
+                if(chatRoom){
+                    chatRoom.broadcast({
+                        type: EventTypes.RECEIVE_CHAT_MESSAGE,
+                        message: {
+                            roomId: chatMessagePayload.roomId,
+                            peerId: chatMessagePayload.peerId,
+                            peerName: chatMessagePayload.peerName,
+                            message: chatMessagePayload.message,
+                            timestamp: chatMessagePayload.timestamp,
+                        }
+                    }, peerId);
+                }
+                break;
+            default:
+                console.warn("Unknown event type:", data.type);
         }
     });
     

@@ -201,6 +201,7 @@ export class Room {
       throw new Error("Router is not initialized");
     }
     let transport: WebRtcTransport<AppData>;
+    // console.log("Client rtpCapabilities:", JSON.stringify(this.router.rtpCapabilities, null, 2));
     if (direction === "send") {
       transport = await this.createTransport(peerId, direction);
     } else if (direction === "recv") {
@@ -260,12 +261,14 @@ export class Room {
     if (!producerTransport) {
       throw new Error(`Send transport for peer ${peerId} does not exist`);
     }
+    // console.log("Can client produce video:", this.router?.can("video"));
     try {
       const producer = await producerTransport.produce({
         kind,
         rtpParameters,
         appData,
       });
+      console.log("Producer RTP Params:", producer.rtpParameters);
       this.createProducer(peerId, producer);
       if (producer.kind === "audio" && this.audioLevelObserver) {
         console.log("going to add producer to active speaker observer");
@@ -370,6 +373,7 @@ export class Room {
         paused: true,
         appData: appData,
       });
+      console.log("Consumer RTP Params:", consumer.rtpParameters);
       this.createConsumer(peerId, consumer);
       consumer.on("transportclose", () => {
         console.log(`Consumer transport closed for peer ${peerId}`);
