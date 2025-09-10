@@ -23,6 +23,7 @@ export enum EventTypes {
   REMOTE_USER_MEDIA_TOGGLED="REMOTE_USER_MEDIA_TOGGLED",
   SEND_CHAT_MESSAGE = "SEND_CHAT_MESSAGE",
   RECEIVE_CHAT_MESSAGE = "RECEIVE_CHAT_MESSAGE",
+  TYPING = "TYPING",
 }
 
 export interface AppData {
@@ -109,6 +110,7 @@ export interface EventPayloadMap {
   [EventTypes.REMOTE_USER_MEDIA_TOGGLED]:{roomId:string,peerId:string,type: Omit<KindType,"screen">,enable:boolean};
   [EventTypes.SEND_CHAT_MESSAGE]: {roomId:string,peerId:string,peerName:string,message:string,timestamp:string};
   [EventTypes.RECEIVE_CHAT_MESSAGE]: {roomId:string,peerId:string,peerName:string,message:string,timestamp:string};
+  [EventTypes.TYPING]: {roomId:string,peerId:string};
 }
 
 export type EventMessage<T extends EventTypes = EventTypes> = {

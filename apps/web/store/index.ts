@@ -19,6 +19,9 @@ export type RemoteUser = {
 interface UIState {
     messages: EventPayloadMap[typeof EventTypes.SEND_CHAT_MESSAGE][];
     addMessage: (message: EventPayloadMap[typeof EventTypes.SEND_CHAT_MESSAGE]) => void;
+    typingUsers: Map<string, { name: string; timestamp: number }>;
+    addTypingUser: (peerId: string, name: string) => void;
+    removeTypingUser: (peerId: string) => void;
     speakingUsers: string[]
     setSpeakingUsers: (currentSpeakingUsers:string[]) => void
     remoteUsers: Map<string, RemoteUser>
@@ -50,6 +53,21 @@ export const useUIStore = create<UIState>((set)=>(
     messages: [],
     addMessage: (message) => {
         set((state) => ({ messages: [...state.messages, message] }))
+    },
+    typingUsers: new Map(),
+    addTypingUser: (peerId, name) => {
+        set((state) => {
+            const newTypingUsers = new Map(state.typingUsers);
+            newTypingUsers.set(peerId, { name, timestamp: Date.now() });
+            return { typingUsers: newTypingUsers };
+        });
+    },
+    removeTypingUser: (peerId) => {
+        set((state) => {
+            const newTypingUsers = new Map(state.typingUsers);
+            newTypingUsers.delete(peerId);
+            return { typingUsers: newTypingUsers };
+        });
     },
     speakingUsers: [],
     setSpeakingUsers: (currentSpeakingUsers) => {

@@ -134,6 +134,19 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
                     }, peerId);
                 }
                 break;
+            case EventTypes.TYPING:
+                const typingPayload = data.message as EventPayloadMap[typeof EventTypes.TYPING]
+                const typingRoom = roomManager.getRoom(typingPayload.roomId);
+                if(typingRoom){
+                    typingRoom.broadcast({
+                        type: EventTypes.TYPING,
+                        message: {
+                            roomId: typingPayload.roomId,
+                            peerId: typingPayload.peerId,
+                        }
+                    }, peerId);
+                }
+                break;
             default:
                 console.warn("Unknown event type:", data.type);
         }
