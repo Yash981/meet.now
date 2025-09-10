@@ -5,12 +5,25 @@ import { EventMessage, EventPayloadMap, EventTypes } from "@repo/types";
 import {  generateRandomId } from "./utils";
 import {encodeBinaryMessage,decodeBinaryMessage} from "@repo/utils"
 import WorkerManager from "./managers/worker-manager";
+import { publishMessage } from "./pubsub/publisher";
+import { subscribeToChannel } from "./pubsub/subscriber";
 
 const wss = new WebSocketServer({ port: 8080 });
 
 wss.on("listening", () => {
   console.log("WebSocket server is now running on 8080");
 });
+async function startServer() {
+  await subscribeToChannel();
+
+  // 2️⃣ Start WebSocket / Mediasoup server
+  console.log("Server is ready and listening for connections...");
+}
+
+startServer().catch((err) => {
+  console.error("Failed to start server:", err);
+});
+
 async function init() {
     const workerMngr = WorkerManager.getInstance();
     await workerMngr.init();
@@ -137,6 +150,12 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
             case EventTypes.TYPING:
                 const typingPayload = data.message as EventPayloadMap[typeof EventTypes.TYPING]
                 const typingRoom = roomManager.getRoom(typingPayload.roomId);
+                publishMessage(`room:${typingPayload.roomId}`,{
+                    type: EventTypes.TYPING,
+                    message: {
+                        roomId: typingPayload.roomId,
+                        peerId: typingPayload.peerId,
+                    }});
                 if(typingRoom){
                     typingRoom.broadcast({
                         type: EventTypes.TYPING,
