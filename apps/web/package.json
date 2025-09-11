@@ -17,11 +17,12 @@
     "@radix-ui/react-switch": "^1.2.5",
     "@repo/types": "workspace:*",
     "@repo/ui": "workspace:*",
+    "@repo/utils": "workspace:*",
     "@tailwindcss/postcss": "^4.1.7",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.511.0",
-    "mediasoup-client": "3",
+    "mediasoup-client": "^3.15.6",
     "next": "^15.3.0",
     "next-themes": "^0.4.6",
     "postcss": "^8.5.3",
@@ -30,8 +31,7 @@
     "sonner": "^2.0.3",
     "tailwind-merge": "^3.3.0",
     "tailwindcss": "^4.1.7",
-    "zustand": "^5.0.5",
-    "@repo/utils":"workspace:*"
+    "zustand": "^5.0.5"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",

@@ -187,15 +187,15 @@ export default function VideoCall() {
 
   const createDevice = async (rtpCapabilities: RtpCapabilities) => {
     try {
-      console.log("Creating device...");
+      
       mediaSoupClientState.current.device = new Device();
       await mediaSoupClientState.current.device.load({ routerRtpCapabilities: rtpCapabilities });
       mediaSoupClientState.current.rtpCapabilities = rtpCapabilities;
       setStatus("Ready");
-      console.log("Device RTP capabililties", mediaSoupClientState.current.device.rtpCapabilities);
     } catch (error) {
       console.error("Error creating device:", error);
       setStatus("Error creating device");
+      throw error;
     }
   };
 
@@ -475,9 +475,10 @@ export default function VideoCall() {
 
       if (isVideoEnabled) {
         const videoTrack = mediaSoupClientState.current.localStream?.getVideoTracks()[0];
-        if (videoTrack) {
-          const producer = await transport.produce({
-            track: videoTrack,
+        try {
+          if (videoTrack) {
+            const producerOptions = {
+              track: videoTrack,
             encodings: [
               { rid: "r0", maxBitrate: 100000, scalabilityMode: "S1T3" },
               { rid: "r1", maxBitrate: 300000, scalabilityMode: "S1T3" },
@@ -485,10 +486,14 @@ export default function VideoCall() {
             ],
             codecOptions: { videoGoogleStartBitrate: 1000 },
             appData: { type: 'camera' }
-          });
-          if (producer) {
-            mediaSoupClientState.current.producers.set(producer.id, producer);
+            };
+            const producer = await transport.produce(producerOptions);
+            if (producer) {
+              mediaSoupClientState.current.producers.set(producer.id, producer);
+            }
           }
+        } catch(error){
+          console.error("errorr",error)
         }
       }
 

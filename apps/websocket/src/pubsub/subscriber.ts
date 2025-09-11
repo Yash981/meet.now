@@ -19,21 +19,31 @@ export const handleMessages = (message: string, channel: string) => {
   console.log(`Received message on channel ${channel}: ${message}`);
   try {
     const parsedMessage = JSON.parse(message);
-    if (parsedMessage.type === EventTypes.TYPING) {
-      const typingPayload = parsedMessage.message;
-      const typingRoom = roomManager.getRoom(typingPayload.roomId);
-      if (typingRoom) {
-        typingRoom.broadcast(
-          {
-            type: EventTypes.TYPING,
-            message: {
-              roomId: typingPayload.roomId,
-              peerId: typingPayload.peerId,
-            },
-          },
-          typingPayload.peerId
-        );
-      }
+    switch (parsedMessage.type) {
+      case EventTypes.TYPING:
+        const typingPayload = parsedMessage.message;
+        const typingRoom = roomManager.getRoom(typingPayload.roomId);
+        if (typingRoom) {
+          typingRoom.broadcast(parsedMessage, typingPayload.peerId);
+        }
+        break;
+
+      case EventTypes.RECEIVE_CHAT_MESSAGE:
+        const chatMessagePayload = parsedMessage.message;
+        const chatRoom = roomManager.getRoom(chatMessagePayload.roomId);
+        if (chatRoom) {
+          chatRoom.broadcast(parsedMessage, chatMessagePayload.peerId);
+        }
+        break;
+      case EventTypes.LOCAL_USER_MEDIA_TOGGLED:
+        const localUserVideoOffPayload = parsedMessage.message;
+        const localUserVideoOffRoom = roomManager.getRoom(localUserVideoOffPayload.roomId);
+        if (localUserVideoOffRoom) {
+          localUserVideoOffRoom.handleLocalUserVideoOff(localUserVideoOffPayload, localUserVideoOffPayload.peerId);
+        }
+        break;
+      default:
+        console.warn("Unknown event type:", parsedMessage.type);
     }
   } catch (error) {
     console.error("Error parsing message:", error);

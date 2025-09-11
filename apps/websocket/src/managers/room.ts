@@ -268,7 +268,6 @@ export class Room {
         rtpParameters,
         appData,
       });
-      console.log("Producer RTP Params:", producer.rtpParameters);
       this.createProducer(peerId, producer);
       if (producer.kind === "audio" && this.audioLevelObserver) {
         console.log("going to add producer to active speaker observer");
@@ -373,7 +372,6 @@ export class Room {
         paused: true,
         appData: appData,
       });
-      console.log("Consumer RTP Params:", consumer.rtpParameters);
       this.createConsumer(peerId, consumer);
       consumer.on("transportclose", () => {
         console.log(`Consumer transport closed for peer ${peerId}`);
@@ -557,7 +555,7 @@ export class Room {
       );
     }
   }
-  handleLocalUserVideoOff(data:EventPayloadMap[typeof EventTypes.LOCAL_USER_MEDIA_TOGGLED],ws:WebSocket,peerId:string){
+  handleLocalUserVideoOff(data:EventPayloadMap[typeof EventTypes.LOCAL_USER_MEDIA_TOGGLED],peerId:string){
     this.broadcast({
       type:EventTypes.REMOTE_USER_MEDIA_TOGGLED,
       message:data
