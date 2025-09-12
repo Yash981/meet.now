@@ -1,5 +1,4 @@
 import { Room } from "./room";
-import { WebSocket } from "ws";
 
 type RoomData = {
     users: Set<string>;

@@ -8,7 +8,8 @@ import type { PeerClientState } from "../types";
 export function useScreenShare(
   mediaSoupClientState: React.MutableRefObject<PeerClientState>,
   wsRef: React.MutableRefObject<WebSocket | null>,
-  setStatus: (s: string) => void
+  setStatus: (s: string) => void,
+  roomId?: string | undefined,
 ) {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
 
@@ -26,7 +27,7 @@ export function useScreenShare(
           mediaSoupClientState.current.producers.delete(screenProducer.id);
           wsRef.current?.send(encodeBinaryMessage(JSON.stringify({
             type: EventTypes.PRODUCER_CLOSED,
-            message: { producerId: screenProducer.id, kind: "screen", roomId: "123" }
+            message: { producerId: screenProducer.id, kind: "screen", roomId: roomId || "123" }
           })));
         }
         setIsScreenSharing(false);
