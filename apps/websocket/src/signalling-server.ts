@@ -35,13 +35,11 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     const data = JSON.parse(decoded) as EventMessage;
 
     switch (data.type) {
-      case EventTypes.JOIN_ROOM: // pub/sub
+      case EventTypes.JOIN_ROOM:
         try {
           const payload =
             data.message as EventPayloadMap[typeof EventTypes.JOIN_ROOM];
-          const room =
-            roomManager.getRoom(payload.roomId) ||
-            roomManager.createRoom(payload.roomId);
+          const room = roomManager.getRoom(payload.roomId) || roomManager.createRoom(payload.roomId);
           roomManager.addUserToRoom(payload.roomId, peerId);
           const roomInstance = roomManager.getRoom(payload.roomId);
           if (roomInstance) {
@@ -73,7 +71,7 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
         }
         break;
 
-      case EventTypes.GET_ROUTER_RTP_CAPABILITIES: //publish to redis pub/sub and use pipeTransport for scalable
+      case EventTypes.GET_ROUTER_RTP_CAPABILITIES: 
         const getRouterPayload =
           data.message as EventPayloadMap[typeof EventTypes.GET_ROUTER_RTP_CAPABILITIES];
         const room = roomManager.getRoom(getRouterPayload.roomId);

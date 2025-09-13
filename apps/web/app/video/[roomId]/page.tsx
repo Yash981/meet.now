@@ -15,12 +15,14 @@ import { useScreenShare } from ".././hooks/useScreenShare";
 import type { PeerClientState } from ".././types";
 import { SidebarParticipants } from "@/components/video-call/sidebar-participants";
 import { ChatSidebar } from "@/components/video-call/chat-sidebar";
-import { useParams,useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 export type { PeerClientState };
 
 export default function VideoCall() {
-  const {roomId} = useParams<{roomId: string}>();
+  const { roomId } = useParams<{ roomId: string }>();
+
+  const pathname = `${process.env.NEXT_PUBLIC_BASE_URL}/video/${roomId}`
   const router = useRouter();
   const { remoteUsers, setRemoteUsers, speakingUsers, setSpeakingUsers } = useUIStore()
   const mediaSoupClientState = useRef<PeerClientState>({
@@ -41,7 +43,7 @@ export default function VideoCall() {
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isInCall, setIsInCall] = useState(false);
   const [participantCount, setParticipantCount] = useState(0);
-  const { isScreenSharing, toggleScreenShare } = useScreenShare(mediaSoupClientState as any, wsRef as any, setStatus,roomId);
+  const { isScreenSharing, toggleScreenShare } = useScreenShare(mediaSoupClientState as any, wsRef as any, setStatus, roomId);
   const { isRecording, handleToggleRecording } = useRecording(mediaSoupClientState as any);
   const [showSidebar, setShowSidebar] = useState(false);
   const [showChat, setShowChat] = useState(false);
@@ -57,7 +59,7 @@ export default function VideoCall() {
         await initializeDevice();
         if (!isInCall) {
           startCall();
-        }      
+        }
         break;
       }
 
@@ -118,14 +120,11 @@ export default function VideoCall() {
 
     }
   };
-  let x = 0;
   const connectWebSocket = () => {
     if (hasConnected.current) return; // ✅ Prevent 2nd call
     hasConnected.current = true;
-    if(wsRef.current) return;
+    if (wsRef.current) return;
     const ws = new WebSocket("ws://localhost:8080");
-    console.log(ws,"called times",x)
-    x += 1
     ws.binaryType = "arraybuffer";
     wsRef.current = ws;
 
@@ -167,18 +166,18 @@ export default function VideoCall() {
   const createDevice = async (rtpCapabilities: RtpCapabilities) => {
     try {
 
-      
+
       mediaSoupClientState.current.device = new Device();
-      
-      
+
+
 
       // Load device with router capabilities
       await mediaSoupClientState.current.device.load({ routerRtpCapabilities: rtpCapabilities });
-      
+
       // Store capabilities
       mediaSoupClientState.current.rtpCapabilities = rtpCapabilities;
-      
-      
+
+
 
       setStatus("Ready");
     } catch (error) {
@@ -293,7 +292,7 @@ export default function VideoCall() {
   useEffect(() => {
     if (wsRef.current) return;
     connectWebSocket();
-    
+
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
@@ -309,7 +308,7 @@ export default function VideoCall() {
     };
     //eslint-disable-next-line
   }, [roomId]);
-  
+
   const toggleVideo = async () => {
     if (mediaSoupClientState.current.localStream) {
       const videoTrack = mediaSoupClientState.current.localStream.getVideoTracks()[0];
@@ -483,7 +482,6 @@ export default function VideoCall() {
         const videoTrack = mediaSoupClientState.current.localStream?.getVideoTracks()[0];
         try {
           if (videoTrack) {
-            // Basic producer options without codec forcing
             const producerOptions = {
               track: videoTrack,
               appData: { type: 'camera' },
@@ -501,12 +499,11 @@ export default function VideoCall() {
               mediaSoupClientState.current.producers.set(producer.id, producer);
             }
           }
-        } catch(error){
-          console.error("errorr",error)
+        } catch (error) {
+          console.error("errorr", error)
         }
       }
 
-      // Produce audio if enabled
       if (isAudioEnabled) {
         const audioTrack = mediaSoupClientState.current.localStream?.getAudioTracks()[0];
         if (audioTrack) {
@@ -695,8 +692,18 @@ export default function VideoCall() {
           status={status}
           isInCall={isInCall}
           participantCount={participantCount}
-          onCopyLink={() => navigator.clipboard.writeText(window.location.href)}
-          onInvite={() => navigator.clipboard.writeText(window.location.href)}
+          onCopyLink={async () => {
+            await navigator.clipboard.writeText(pathname);
+            toast.success("Room link copied to clipboard", {
+              duration: 3000,
+              position: "top-center",
+              style: {
+                backgroundColor: "#ffffff",
+                color: "#000000",
+              }
+            });
+          }}
+          onInvite={async () => await navigator.clipboard.writeText(window.location.href)}
           onToggleSidebar={() => setShowSidebar((v) => !v)}
           showSidebar={showSidebar}
         />
@@ -746,7 +753,7 @@ export default function VideoCall() {
               )}
             </div>}
           </div>
-         )}
+        )}
       </div>
     </div>
   );

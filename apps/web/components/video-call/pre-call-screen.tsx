@@ -1,28 +1,30 @@
 "use client";
 
-import { Phone, Plus, LogIn } from "lucide-react";
+import { Plus, LogIn } from "lucide-react";
 import { FeatureHighlights } from "./feature-highlights";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-interface PreCallScreenProps {
-  status: string;
-}
-
-export const PreCallScreen = ({ status }: PreCallScreenProps) => {
+export const PreCallScreen = () => {
   const [roomId, setRoomId] = useState("");
   const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+
 
   const handleCreateRoom = () => {
     const newRoomId = crypto.randomUUID();
+    startTransition(() => {
     router.push(`/video/${newRoomId}`);
+    });
   };
 
   const handleJoinRoom = () => {
     if (roomId.trim()) {
+      startTransition(() => {
       router.push(`/video/${roomId.trim()}`);
+      });
     }
   };
 
@@ -96,10 +98,12 @@ export const PreCallScreen = ({ status }: PreCallScreenProps) => {
           Create New Room
         </Button>
       </div>
-
-      {/* {status !== 'Ready' && status !== "Connected" && (
-        <p className="text-white/60 text-sm">Please wait while we set up your call...</p>
-      )} */}
+      {isPending && (
+        <div className="flex justify-center items-center mt-2">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500"></div>
+          <span className="ml-2">Please wait while we set up your call...</span>
+        </div>
+      )}
     </div>
   );
 };

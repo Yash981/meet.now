@@ -1,13 +1,12 @@
 "use client";
-import { Video, Users, Settings, Maximize2, UserPlus, Link as LinkIcon, Sun, Moon, PanelsTopLeft, PanelRightOpen } from "lucide-react";
+import { Video, Users, Settings, Maximize2, UserPlus, Link as LinkIcon, PanelsTopLeft, PanelRightOpen } from "lucide-react";
 import Link from "next/link";
-import { useTheme } from "next-themes";
 import { ModeToggle } from "../toggle-mode";
 
 interface HeaderProps {
-  status: string;
-  isInCall: boolean;
-  participantCount: number;
+  status?: string;
+  isInCall?: boolean;
+  participantCount?: number;
   onCopyLink?: () => void;
   onInvite?: () => void;
   onToggleSidebar?: () => void;
@@ -25,7 +24,7 @@ export const Header = ({ status, isInCall, participantCount, onCopyLink, onInvit
           <Link href="/" className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
             Meet Now
           </Link>
-          <div className="flex items-center space-x-4 text-sm text-gray-400">
+          {status && <div className="flex items-center space-x-4 text-sm text-gray-400">
             <span className="flex items-center space-x-1">
               <div className={`w-2 h-2 rounded-full ${status === 'Connected' || status === 'Ready' || status === 'In call' ? 'bg-green-400' : 'bg-red-400'}`}></div>
               <span>{status}</span>
@@ -33,10 +32,10 @@ export const Header = ({ status, isInCall, participantCount, onCopyLink, onInvit
             {isInCall && (
               <span className="flex items-center space-x-1">
                 <Users size={14} />
-                <span>{participantCount + 1} participants</span>
+                <span>{(participantCount || 0) + 1} participants</span>
               </span>
             )}
-          </div>
+          </div>}
         </div>
       </div>
 
@@ -46,7 +45,7 @@ export const Header = ({ status, isInCall, participantCount, onCopyLink, onInvit
             <button onClick={onInvite} className="p-2 rounded-lg  hover:bg-slate-700/60 transition-all border border-white/10" aria-label="Invite">
               <UserPlus size={18} />
             </button>
-            <button onClick={onCopyLink} className="p-2 rounded-lg  hover:bg-slate-700/60 transition-all border border-white/10" aria-label="Copy link">
+            <button onClick={onCopyLink} className="p-2 rounded-lg  hover:bg-slate-700/60 transition-all border border-white/10 cursor-pointer" aria-label="Copy link">
               <LinkIcon size={18} />
             </button>
             <button onClick={onToggleSidebar} className="hidden lg:inline-flex p-2 rounded-lg  hover:bg-slate-700/60 transition-all border border-white/10" aria-label="Toggle sidebar">

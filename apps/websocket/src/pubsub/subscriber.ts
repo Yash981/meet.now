@@ -4,10 +4,12 @@ import { roomManager } from "../managers/room-manager";
 export const subscribeToChannel = async () => {
   try {
     console.log("Subscribing to channels...");
-    const subscribeCount = await subClient.psubscribe("room:*");
+    const subscribeCount = await subClient.psubscribe("room:*","server:*");
     console.log(`Subscribed to ${subscribeCount} channels`);
     subClient.on("pmessage", (pattern, channel, message) => {
-      handleMessages(message, channel);
+      if(pattern === "room:*") handleRoomMessages(message, channel);
+      else if(pattern === "server:*") handleServerMessages(message, channel);
+      else console.warn("Unknown pattern:", pattern);
     });
   } catch (error) {
     console.error("Error subscribing to channel:", error);
@@ -15,7 +17,7 @@ export const subscribeToChannel = async () => {
   }
 };
 
-export const handleMessages = (message: string, channel: string) => {
+export const handleRoomMessages = (message: string, channel: string) => {
   console.log(`Received message on channel ${channel}: ${message}`);
   try {
     const parsedMessage = JSON.parse(message);
@@ -48,4 +50,7 @@ export const handleMessages = (message: string, channel: string) => {
   } catch (error) {
     console.error("Error parsing message:", error);
   }
+};
+export const handleServerMessages = (message: string, channel: string) => {
+  console.log(`Received message on channel ${channel}: ${message}`);
 };
