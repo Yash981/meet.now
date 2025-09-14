@@ -121,7 +121,7 @@ export default function VideoCall() {
     }
   };
   const connectWebSocket = () => {
-    if (hasConnected.current) return; // ✅ Prevent 2nd call
+    if (hasConnected.current) return;
     hasConnected.current = true;
     if (wsRef.current) return;
     const ws = new WebSocket("ws://localhost:8080");
@@ -145,7 +145,7 @@ export default function VideoCall() {
       console.log("WebSocket disconnected");
       setStatus("Disconnected");
     };
-    
+
     ws.onerror = (error) => {
       console.error("WebSocket error:", error);
       setStatus("Connection error");
@@ -681,8 +681,20 @@ export default function VideoCall() {
   useEffect(() => {
     setParticipantCount(remoteUsers.size);
   }, [remoteUsers]);
-
-
+  function handleFullScreen() {
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen();
+    } else if ((document.documentElement as any).webkitRequestFullscreen) { // Safari
+      (document.documentElement as any).webkitRequestFullscreen();
+    } else if ((document.documentElement as any).msRequestFullscreen) { // IE/Edge
+      (document.documentElement as any).msRequestFullscreen();
+    }
+  }
+  function handleExitFullScreen() {
+    if (document.exitFullscreen) {
+      document.exitFullscreen();
+    }
+  }
   return (
 
     <div className="min-h-screen  text-white relative overflow-hidden">
@@ -706,6 +718,8 @@ export default function VideoCall() {
           onInvite={async () => await navigator.clipboard.writeText(window.location.href)}
           onToggleSidebar={() => setShowSidebar((v) => !v)}
           showSidebar={showSidebar}
+          maximize={handleFullScreen}
+          minimize={handleExitFullScreen}
         />
 
         {!isInCall ? (

@@ -32,9 +32,12 @@ class RoomManager {
     addUserToRoom(roomId: string, userId: string): void {
         const roomData = this.rooms.get(roomId);
         if (!roomData) {
-            throw new Error(`Room with ID ${roomId} does not exist`);
+            const newRoom = this.createRoom(roomId);
+            this.rooms.set(roomId, { users: new Set([userId]), room: newRoom });
+        } else {
+            roomData.users.add(userId);
+            this.rooms.set(roomId, roomData);
         }
-        roomData.users.add(userId);
     }
 
     removeUserFromRoom(roomId: string, userId: string): void {

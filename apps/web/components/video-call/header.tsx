@@ -1,5 +1,6 @@
 "use client";
-import { Video, Users, Settings, Maximize2, UserPlus, Link as LinkIcon, PanelsTopLeft, PanelRightOpen } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Video, Users, Settings, Maximize2, UserPlus, Link as LinkIcon, PanelsTopLeft, PanelRightOpen, Minimize2 } from "lucide-react";
 import Link from "next/link";
 import { ModeToggle } from "../toggle-mode";
 
@@ -11,9 +12,14 @@ interface HeaderProps {
   onInvite?: () => void;
   onToggleSidebar?: () => void;
   showSidebar?: boolean;
+  maximize: () => void;
+  minimize: () => void;
 }
 
-export const Header = ({ status, isInCall, participantCount, onCopyLink, onInvite, onToggleSidebar, showSidebar = false }: HeaderProps) => {
+
+
+
+export const Header = ({ status, isInCall, participantCount, onCopyLink, onInvite, onToggleSidebar, showSidebar = false,maximize,minimize }: HeaderProps) => {
   return (
     <div className="flex items-center justify-between mb-6 md:mb-8">
       <div className="flex items-center space-x-4">
@@ -59,12 +65,40 @@ export const Header = ({ status, isInCall, participantCount, onCopyLink, onInvit
             <button className="p-2 rounded-lg  hover:bg-slate-700/60 transition-all border border-white/10" aria-label="Open settings">
               <Settings size={18} />
             </button>
-            <button className="p-2 rounded-lg  hover:bg-slate-700/60 transition-all border border-white/10" aria-label="Maximize window">
-              <Maximize2 size={18} />
-            </button>
+            <FullscreenToggleButton maximize={maximize} minimize={minimize} />
           </>
         )}
       </div>
     </div>
   );
 };
+function FullscreenToggleButton({ maximize, minimize }: { maximize: () => void; minimize: () => void }) {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    function handleChange() {
+      setIsFullscreen(!!document.fullscreenElement);
+    }
+    document.addEventListener("fullscreenchange", handleChange);
+    handleChange();
+    return () => document.removeEventListener("fullscreenchange", handleChange);
+  }, []);
+
+  const handleClick = () => {
+    if (isFullscreen) {
+      minimize();
+    } else {
+      maximize();
+    }
+  };
+
+  return (
+    <button
+      className="p-2 rounded-lg  hover:bg-slate-700/60 transition-all border border-white/10"
+      aria-label={isFullscreen ? "Minimize window" : "Maximize window"}
+      onClick={handleClick}
+    >
+      {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+    </button>
+  );
+}
