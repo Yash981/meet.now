@@ -65,7 +65,7 @@ export const Header = ({ status, isInCall, participantCount, onCopyLink, onInvit
             <button className="p-2 rounded-lg  hover:bg-slate-700/60 transition-all border border-white/10" aria-label="Open settings">
               <Settings size={18} />
             </button>
-            {maximize && minimize && <FullscreenToggleButton maximize={maximize} minimize={minimize} />}
+            {maximize && minimize && (<FullscreenToggleButton maximize={maximize} minimize={minimize} />)}
           </>
         )}
       </div>

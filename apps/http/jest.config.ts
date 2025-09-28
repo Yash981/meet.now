@@ -6,6 +6,13 @@ const config: Config = {
   testMatch: ['**/tests/**/*.test.ts'], // Where your tests live
   moduleFileExtensions: ['ts', 'js', 'json', 'node'],
   verbose: true,
+  globals: {
+    'ts-jest': {
+      tsconfig: {
+        types: ['jest', 'node']
+      }
+    }
+  }
 };
 
 export default config;

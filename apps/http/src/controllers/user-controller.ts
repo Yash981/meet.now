@@ -61,7 +61,6 @@ export const completeMultipartUpload = async (req: Request, res: Response) => {
   try {
     
     const { key, uploadId, parts } = parsedCompleteMultiPartUploadData.data; // parts = [{ PartNumber, ETag }]
-    console.log(key,uploadId,parts)
     const command = new CompleteMultipartUploadCommand({
       Bucket: process.env.S3_BUCKET_NAME!,
       Key: key,

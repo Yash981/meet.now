@@ -15,12 +15,12 @@ describe("User Router", () => {
         expect(parsedData.status).toBe(400)
     })
     it("no contentType on start multipart upload",async()=>{
-        const parsedData = await request(app).post("/api/v1/start-multipart").send({filname:"test2-file.txt"})
+        const parsedData = await request(app).post("/api/v1/start-multipart").send({fileName:"test2-file.txt"})
         console.log(parsedData,"parsed")
         expect(parsedData.status).toBe(400)
     })
     it("no contentType and no filename on start multipart upload",async()=>{
-        const parsedData = await request(app).post("/api/v1/start-multipart").send({filname:"test2-file.txt"})
+        const parsedData = await request(app).post("/api/v1/start-multipart").send({})
         console.log(parsedData,"parsed")
         expect(parsedData.status).toBe(400)
     })
