@@ -45,7 +45,7 @@ export const startMultiPartUpload = async (req: Request, res: Response) => {
       ContentType: contentType,
     });
     const response = await s3Client.send(command);
-    res.json({ uploadId: response.UploadId, key: response.Key });
+    res.status(200).json({ uploadId: response.UploadId, key: response.Key });
   } catch (error) {
     res.status(500).json({ error: "Failed to start multipart upload", details: (error as Error).message });
   }
@@ -61,7 +61,7 @@ export const completeMultipartUpload = async (req: Request, res: Response) => {
   try {
     
     const { key, uploadId, parts } = parsedCompleteMultiPartUploadData.data; // parts = [{ PartNumber, ETag }]
-
+    console.log(key,uploadId,parts)
     const command = new CompleteMultipartUploadCommand({
       Bucket: process.env.S3_BUCKET_NAME!,
       Key: key,

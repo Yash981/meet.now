@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "dev": "tsx watch ./src/index.ts",
-    "build": "tsc -b"
+    "build": "tsc -b",
+    "test": "jest",
+    "test:watch": "jest --watch"
   },
   "keywords": [],
   "author": "",
@@ -20,8 +22,15 @@
     "tsx": "^4.20.3"
   },
   "devDependencies": {
+    "@repo/db": "workspace:*",
     "@repo/shared-schema": "workspace:*",
     "@repo/typescript-config": "workspace:*",
-    "@types/cors": "^2.8.19"
+    "@types/cors": "^2.8.19",
+    "@types/jest": "^30.0.0",
+    "@types/supertest": "^6.0.3",
+    "aws-sdk-client-mock": "^4.1.0",
+    "jest": "^30.2.0",
+    "supertest": "^7.1.4",
+    "ts-jest": "^29.4.4"
   }
 }

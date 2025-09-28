@@ -11,3 +11,4 @@ const PORT = process.env.PORT || 9000
 app.listen(PORT,()=>{
     console.log(`HTTP server is running on http://localhost:${PORT}`)
 })
+export default app
