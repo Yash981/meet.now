@@ -11,9 +11,9 @@ export function SidebarParticipants({ localPeerId }: { localPeerId: string }) {
 
   return (
     <aside className="w-full lg:w-80 xl:w-96 shrink-0">
-      <div className="rounded-2xl border border-white/10 bg-slate-900/60 backdrop-blur-md shadow-xl p-4">
+      <div className="rounded-2xl border border-border/50 bg-card/60 backdrop-blur-md shadow-xl p-4">
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2 text-sm text-white/80">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Users size={16} />
             <span>Participants</span>
           </div>
@@ -65,25 +65,25 @@ function ParticipantRow({
   isLocal?: boolean;
 }) {
   return (
-    <div className={`flex items-center justify-between rounded-xl border border-white/10 px-3 py-2 bg-slate-900/40 ${isSpeaking ? "ring-1 ring-green-400/60" : ""}`}>
+    <div className={`flex items-center justify-between rounded-xl border border-border/40 px-3 py-2 bg-muted/40 ${isSpeaking ? "ring-1 ring-green-500/60" : ""}`}>
       <div className="flex items-center gap-3 min-w-0">
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-600 flex items-center justify-center text-white text-xs font-bold">
+        <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-bold">
           {(name?.charAt(0) || id?.charAt(0) || "U").toUpperCase()}
         </div>
         <div className="min-w-0">
-          <div className="text-sm text-white/90 truncate">{name}</div>
-          <div className="text-[10px] text-white/50">{isLocal ? "Local" : id}</div>
+          <div className="text-sm text-foreground truncate">{name}</div>
+          <div className="text-[10px] text-muted-foreground">{isLocal ? "Local" : id}</div>
         </div>
       </div>
       <div className="flex items-center gap-1">
         {screenEnabled && (
           <Badge variant="secondary" className="h-6 text-[10px] gap-1"><MonitorUp size={12}/> Share</Badge>
         )}
-        <div className={`w-6 h-6 rounded-full flex items-center justify-center ${audioEnabled ? "bg-emerald-500/15 border border-emerald-500/30" : "bg-rose-600/20 border border-rose-600/30"}`}>
-          {audioEnabled ? <Mic size={12} className="text-emerald-300"/> : <MicOff size={12} className="text-rose-300"/>}
+        <div className={`w-6 h-6 rounded-full flex items-center justify-center ${audioEnabled ? "bg-green-500/15 border border-green-500/30" : "bg-red-500/20 border border-red-500/30"}`}>
+          {audioEnabled ? <Mic size={12} className="text-green-500"/> : <MicOff size={12} className="text-red-500"/>}
         </div>
-        <div className={`w-6 h-6 rounded-full flex items-center justify-center ${videoEnabled ? "bg-emerald-500/15 border border-emerald-500/30" : "bg-rose-600/20 border border-rose-600/30"}`}>
-          {videoEnabled ? <Video size={12} className="text-emerald-300"/> : <VideoOff size={12} className="text-rose-300"/>}
+        <div className={`w-6 h-6 rounded-full flex items-center justify-center ${videoEnabled ? "bg-green-500/15 border border-green-500/30" : "bg-red-500/20 border border-red-500/30"}`}>
+          {videoEnabled ? <Video size={12} className="text-green-500"/> : <VideoOff size={12} className="text-red-500"/>}
         </div>
       </div>
     </div>

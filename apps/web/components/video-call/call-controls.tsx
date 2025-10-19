@@ -53,12 +53,12 @@ export const CallControls = ({
       className={`
         relative w-10 h-10 md:w-12 md:h-12 !rounded-full transition-all duration-200 transform
         ${hoveredButton === id ? 'scale-110 cursor-pointer' : 'scale-100'}
-        shadow-lg hover:shadow-xl text-foreground
+        shadow-lg hover:shadow-xl
         ${isDestructive 
-          ? 'bg-red-500 hover:bg-red-600 text-white' 
+          ? 'bg-destructive hover:bg-destructive/90 text-destructive-foreground' 
           : isActive === false 
-            ? 'bg-red-500 hover:bg-red-600 text-white' 
-            : 'bg-white text-gray-800 hover:bg-gray-100 dark:bg-slate-100 dark:text-slate-900'
+            ? 'bg-destructive hover:bg-destructive/90 text-destructive-foreground' 
+            : 'bg-background text-foreground hover:bg-muted border'
         }
       `}
     >
@@ -69,7 +69,7 @@ export const CallControls = ({
   );
   return (
     <div className="fixed bottom-6 md:bottom-8 left-1/2 transform -translate-x-1/2 z-50">
-      <div className="flex items-center space-x-2 md:space-x-3 bg-slate-900/80 backdrop-blur-xl rounded-full p-3 md:p-4 shadow-2xl border border-white/10">
+      <div className="flex items-center space-x-2 md:space-x-3 bg-card/80 backdrop-blur-xl rounded-full p-3 md:p-4 shadow-2xl border border-border/50">
         
         {/* Audio Control */}
         <ControlButton

@@ -109,9 +109,9 @@ export function ChatSidebar({ localPeerId, localUserName = "You", roomId, ws }: 
   };
   return (
     <aside className="w-full lg:w-80 xl:w-96 shrink-0">
-      <div className="rounded-2xl border border-white/10 bg-slate-900/60 backdrop-blur-md shadow-xl p-4 h-[calc(100vh-13rem)]">
+      <div className="rounded-2xl border border-border/50 bg-card/60 backdrop-blur-md shadow-xl p-4 h-[calc(100vh-13rem)]">
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2 text-sm text-white/80">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <MessageSquare size={16} />
             <span>Chat</span>
           </div>
@@ -126,15 +126,15 @@ export function ChatSidebar({ localPeerId, localUserName = "You", roomId, ws }: 
                 }`}
             >
               <div className={`max-w-[85%] ${message.peerId === localPeerId
-                ? "bg-indigo-500/20 border-indigo-500/30"
-                : "bg-slate-800/80 border-white/10"
+                ? "bg-primary/20 border-primary/30"
+                : "bg-muted/80 border-border/60"
                 } border rounded-xl px-3 py-2`}
               >
-                <div className="text-xs text-white/50 mb-1">
+                <div className="text-xs text-muted-foreground mb-1">
                   {message.peerId === localPeerId ? "You" : message.peerId}
                 </div>
-                <div className="text-sm text-white/90">{message.message}</div>
-                <div className="text-xs text-white/40 mt-1">
+                <div className="text-sm text-foreground">{message.message}</div>
+                <div className="text-xs text-muted-foreground mt-1">
                   {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
               </div>
@@ -153,7 +153,6 @@ export function ChatSidebar({ localPeerId, localUserName = "You", roomId, ws }: 
               }
             }}
             placeholder="Type a message..."
-            className="bg-slate-800/80 border-white/10 text-white"
           />
           <Button
             size="icon"
@@ -166,16 +165,16 @@ export function ChatSidebar({ localPeerId, localUserName = "You", roomId, ws }: 
         </div>
         <div className="">
           {typingUsers.size > 0 && (
-            <div className="flex items-center gap-2 text-xs text-white/50 italic px-2 h-6">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground italic px-2 h-6">
               <span>
                 {Array.from(typingUsers.values())
                   .map(info => info.name)
                   .join(', ')} {typingUsers.size === 1 ? 'is' : 'are'} typing
               </span>
               <span className="relative flex h-0 w-6 top-0.5 left-0">
-                <span className="animate-bounce [animation-delay:-0.3s] inline-block w-1 h-1 bg-white/70 rounded-full mx-[1.5px]" />
-                <span className="animate-bounce [animation-delay:-0.15s] inline-block w-1 h-1 bg-white/70 rounded-full mx-[1.5px]" />
-                <span className="animate-bounce inline-block w-1 h-1 bg-white/70 rounded-full mx-[1.5px]" />
+                <span className="animate-bounce [animation-delay:-0.3s] inline-block w-1 h-1 bg-muted-foreground rounded-full mx-[1.5px]" />
+                <span className="animate-bounce [animation-delay:-0.15s] inline-block w-1 h-1 bg-muted-foreground rounded-full mx-[1.5px]" />
+                <span className="animate-bounce inline-block w-1 h-1 bg-muted-foreground rounded-full mx-[1.5px]" />
               </span>
             </div>
           )}
